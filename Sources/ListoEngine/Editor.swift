@@ -1,9 +1,12 @@
 import Foundation
 
-public enum ListoEditorError: Error {
+public enum ListoEditorError: Error, Equatable {
     case taskNotFound
     case sectionNotFound
     case noPrecedingSibling
+    case maxDepthReached
+    case alreadyTopLevel
+    case subtaskNoteNotSupported
 }
 
 /// Implements every "Modo App" action from spec §03. Each method performs a
@@ -27,6 +30,16 @@ public final class ListoEditor {
     /// interpretation + log side effects. The log sidecar is always written
     /// immediately either way, since it is not the document SwiftUI manages.
     public var autoPersist: Bool
+    /// The id of the task most recently touched by `renameTask`,
+    /// `indentTask`, `outdentTask`, or `moveTask` — re-resolved against
+    /// `document` *after* that action's reparse. Ids are content/position
+    /// derived (`StableID`), so any of those four actions gives the task a
+    /// new id; a caller tracking "the same" task across actions (e.g. a UI
+    /// selection) should follow this rather than keep reusing the id it
+    /// passed in, or a second action on what looks like the same row throws
+    /// `taskNotFound`. `nil` after an action that doesn't change identity
+    /// (`toggle`, `setNote`, ...) or that removes the task entirely.
+    public private(set) var lastActionTaskID: UUID?
     private var lines: [String]
 
     public init(fileURL: URL, initialText: String, autoPersist: Bool = true) {
@@ -45,8 +58,8 @@ public final class ListoEditor {
     public var currentText: String { lines.joined(separator: "\n") }
 
     /// Resyncs the in-memory buffer to text that changed out from under the
-    /// editor (an external write picked up by the watcher, or the host
-    /// document's own text binding after a Modo Libre edit).
+    /// editor — the host document's own text binding after a Modo Libre
+    /// edit or save.
     public func loadExternalText(_ text: String) {
         lines = text.components(separatedBy: "\n")
         document = ListoParser.parse(text)
@@ -109,6 +122,7 @@ public final class ListoEditor {
         let sectionPath = (document.location(of: task)?.section).map { document.path(to: $0) ?? [$0.title] }
         lines[line] = indent + "- \(box) " + newText
         try commit()
+        lastActionTaskID = taskUUID(atLine: line)
 
         let event = LogEvent(
             file: fileURL.lastPathComponent,
@@ -122,9 +136,40 @@ public final class ListoEditor {
         return try logWriter.append(event)
     }
 
+    /// Renames a section's heading (the Kanban column title / Outline
+    /// heading text), preserving its level (`#`/`##`/`###`).
+    @discardableResult
+    public func renameSection(sectionID: UUID, newTitle: String) throws -> LogEvent {
+        guard let section = document.allSectionsRecursive.first(where: { $0.id == sectionID }),
+              let line = section.lineRange?.lowerBound else {
+            throw ListoEditorError.sectionNotFound
+        }
+        let oldPath = document.path(to: section) ?? [section.title]
+        lines[line] = String(repeating: "#", count: section.level) + " " + newTitle
+        try commit()
+
+        var newPath = oldPath
+        newPath[newPath.count - 1] = newTitle
+
+        let event = LogEvent(
+            file: fileURL.lastPathComponent,
+            event: .edited,
+            taskID: section.shortID,
+            sectionPath: .path(newPath),
+            text: newTitle,
+            source: .app,
+            interpretedBy: .userAction
+        )
+        return try logWriter.append(event)
+    }
+
+    /// Notes are a top-level-task feature only — Listo's model is
+    /// deliberately two levels (task, subtask), and only the task carries a
+    /// note. Called with a subtask's id, this throws instead of writing one.
     @discardableResult
     public func setNote(taskID: UUID, note: String?) throws -> LogEvent {
         guard let task = findTask(taskID) else { throw ListoEditorError.taskNotFound }
+        guard document.depth(of: task) == 0 else { throw ListoEditorError.subtaskNoteNotSupported }
         let ownLine = task.lineRange!.lowerBound
         let (indent, _) = splitIndent(lines[ownLine])
         let existingCount = task.note.map { $0.components(separatedBy: "\n").count } ?? 0
@@ -151,18 +196,28 @@ public final class ListoEditor {
         return try logWriter.append(event)
     }
 
-    /// Converts a top-level task into a subtask of the task immediately
-    /// preceding it in the same section (spec §03 "Indentar").
+    /// Listo's task tree is deliberately two levels deep: a task, and its
+    /// (unnested) subtasks. `1` here means "a top-level task may gain
+    /// subtasks, but a subtask may not gain subtasks of its own."
+    public static let maxSubtaskDepth = 1
+
+    /// Converts a top-level task into a subtask of whichever sibling
+    /// immediately precedes it — the ⇥/Tab action. A task that is already a
+    /// subtask cannot be indented further (`maxSubtaskDepth`).
     @discardableResult
     public func indentTask(taskID: UUID) throws -> LogEvent {
         guard let task = findTask(taskID) else { throw ListoEditorError.taskNotFound }
-        guard let (section, parent) = document.location(of: task), parent == nil else {
+        guard let (section, parent) = document.location(of: task) else {
             throw ListoEditorError.taskNotFound
         }
-        guard let taskIndex = section.tasks.firstIndex(where: { $0.id == task.id }), taskIndex > 0 else {
+        guard document.depth(of: task) < Self.maxSubtaskDepth else {
+            throw ListoEditorError.maxDepthReached
+        }
+        let siblings = parent?.subtasks ?? section.tasks
+        guard let taskIndex = siblings.firstIndex(where: { $0.id == task.id }), taskIndex > 0 else {
             throw ListoEditorError.noPrecedingSibling
         }
-        let precedingSibling = section.tasks[taskIndex - 1]
+        let precedingSibling = siblings[taskIndex - 1]
 
         let sourceRange = fullRange(of: task)
         var block = Array(lines[sourceRange])
@@ -175,6 +230,52 @@ public final class ListoEditor {
         }
         lines.insert(contentsOf: block, at: insertionIndex)
         try commit()
+        lastActionTaskID = taskUUID(atLine: insertionIndex)
+
+        let event = LogEvent(
+            file: fileURL.lastPathComponent,
+            event: .reindented,
+            taskID: task.shortID,
+            sectionPath: .path(document.path(to: refetch(section)) ?? [section.title]),
+            text: task.text,
+            source: .app,
+            interpretedBy: .userAction
+        )
+        return try logWriter.append(event)
+    }
+
+    /// Converts a subtask into a sibling of its own parent, placed right
+    /// after the parent's whole block, one level shallower — the
+    /// ⇧⇥/Shift+Tab action. A task already at the top level has nothing to
+    /// outdent into and throws `alreadyTopLevel`.
+    ///
+    /// Any siblings that followed `task` under the same parent are left
+    /// where they are (not absorbed as its new children) — simpler and
+    /// more predictable than full outliner promote-with-descendants
+    /// semantics, and sufficient for "change level with Tab/Shift+Tab."
+    @discardableResult
+    public func outdentTask(taskID: UUID) throws -> LogEvent {
+        guard let task = findTask(taskID) else { throw ListoEditorError.taskNotFound }
+        guard let (section, parent) = document.location(of: task), let parentTask = parent else {
+            throw ListoEditorError.alreadyTopLevel
+        }
+
+        let sourceRange = fullRange(of: task)
+        var block = Array(lines[sourceRange])
+        block = block.map { line in
+            if line.hasPrefix("\t") { return String(line.dropFirst(1)) }
+            if line.hasPrefix("  ") { return String(line.dropFirst(2)) }
+            return line
+        }
+        lines.removeSubrange(sourceRange)
+
+        var insertionIndex = fullRange(of: parentTask).upperBound
+        if sourceRange.upperBound <= insertionIndex {
+            insertionIndex -= sourceRange.count
+        }
+        lines.insert(contentsOf: block, at: insertionIndex)
+        try commit()
+        lastActionTaskID = taskUUID(atLine: insertionIndex)
 
         let event = LogEvent(
             file: fileURL.lastPathComponent,
@@ -214,6 +315,7 @@ public final class ListoEditor {
             : targetInsertionIndex
         lines.insert(contentsOf: block, at: adjustedIndex)
         try commit()
+        lastActionTaskID = taskUUID(atLine: adjustedIndex)
 
         let event = LogEvent(
             file: fileURL.lastPathComponent,
@@ -249,6 +351,31 @@ public final class ListoEditor {
         return try logWriter.append(event)
     }
 
+    /// Deletes an entire section — its heading, its own tasks, and every
+    /// nested subsection — in one go.
+    @discardableResult
+    public func deleteSection(sectionID: UUID) throws -> LogEvent {
+        guard let section = document.allSectionsRecursive.first(where: { $0.id == sectionID }),
+              let range = section.lineRange else {
+            throw ListoEditorError.sectionNotFound
+        }
+        let path = document.path(to: section) ?? [section.title]
+
+        lines.removeSubrange(range)
+        try commit()
+
+        let event = LogEvent(
+            file: fileURL.lastPathComponent,
+            event: .deleted,
+            taskID: section.shortID,
+            sectionPath: .path(path),
+            text: section.title,
+            source: .app,
+            interpretedBy: .userAction
+        )
+        return try logWriter.append(event)
+    }
+
     public func readLog() throws -> [LogEvent] {
         try logWriter.readAll()
     }
@@ -277,6 +404,13 @@ public final class ListoEditor {
 
     private func taskID(atLine line: Int) -> String? {
         document.allTasksRecursive.first { $0.lineRange?.lowerBound == line }?.shortID
+    }
+
+    /// Full UUID of whichever task now starts at `line`, post-reparse — how
+    /// `lastActionTaskID` re-resolves a task's new (content/position
+    /// derived) id after an action that moved or relabeled it.
+    private func taskUUID(atLine line: Int) -> UUID? {
+        document.allTasksRecursive.first { $0.lineRange?.lowerBound == line }?.id
     }
 
     /// Contiguous line range spanning a task's own line, its note, and all of

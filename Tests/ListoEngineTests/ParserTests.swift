@@ -55,6 +55,36 @@ final class ParserTests: XCTestCase {
         XCTAssertEqual(firstTask.subtasks.count, 1)
     }
 
+    /// A note is stored dedented — only the one indent unit that
+    /// structurally marks it as "this task's note" is stripped, not any
+    /// extra indentation the note author added on top of that.
+    func testNoteIsStoredDedented() {
+        let text = "# ahora\n- [ ] Task A\n  line one\n  line two\n"
+        let task = ListoParser.parse(text).sections[0].tasks[0]
+        XCTAssertEqual(task.note, "line one\nline two")
+    }
+
+    func testNoteWithExtraIndentationKeepsIt() {
+        // Task's note sits one unit in (2 spaces); the note author added a
+        // further nested line (4 spaces) — only the structural unit is
+        // stripped, leaving 2 spaces of the note's own content.
+        let text = "# ahora\n- [ ] Task A\n  top\n    nested\n"
+        let task = ListoParser.parse(text).sections[0].tasks[0]
+        XCTAssertEqual(task.note, "top\n  nested")
+    }
+
+    /// Parsing a serialized document must reproduce the same (dedented)
+    /// note — the round trip that broke before the dedent fix.
+    func testNoteRoundTripsThroughSerializer() {
+        let original = ListoParser.parse("# ahora\n- [ ] Task A\n  a note\n")
+        let task = original.sections[0].tasks[0]
+        XCTAssertEqual(task.note, "a note")
+
+        let serialized = ListoSerializer.serialize(original)
+        let reparsed = ListoParser.parse(serialized)
+        XCTAssertEqual(reparsed.sections[0].tasks[0].note, "a note")
+    }
+
     func testParsesNestedSubsections() {
         let doc = ListoParser.parse(sample)
         let backlog = doc.sections[2]
@@ -66,6 +96,32 @@ final class ParserTests: XCTestCase {
         let doc = ListoParser.parse(sample)
         let prioridad2 = doc.sections[2].subsections[0]
         XCTAssertEqual(doc.path(to: prioridad2), ["backlog", "prioridad 2"])
+    }
+
+    func testTaskIDIsStableAcrossReparsesOfUnrelatedEdits() {
+        let before = "# ahora\n- [ ] Task A\n- [ ] Task B\n"
+        let after = "# ahora\n- [x] Task A\n- [ ] Task B\n" // Task B untouched
+        let idBefore = ListoParser.parse(before).sections[0].tasks[1].id
+        let idAfter = ListoParser.parse(after).sections[0].tasks[1].id
+        XCTAssertEqual(idBefore, idAfter, "an edit to a sibling task must not change this task's id")
+    }
+
+    func testSectionIDIsStableAcrossReparsesOfUnrelatedEdits() {
+        let before = "# ahora\n- [ ] Task A\n\n# mas tarde\n"
+        let after = "# ahora\n- [ ] Task A\n- [ ] Task B\n\n# mas tarde\n"
+        let idBefore = ListoParser.parse(before).sections[1].id
+        let idAfter = ListoParser.parse(after).sections[1].id
+        XCTAssertEqual(idBefore, idAfter, "adding a task to a sibling section must not change this section's id")
+    }
+
+    func testDuplicateTextGetsDistinctStableIDs() {
+        let text = "# ahora\n- [ ] Same text\n- [ ] Same text\n"
+        let doc = ListoParser.parse(text)
+        XCTAssertNotEqual(doc.sections[0].tasks[0].id, doc.sections[0].tasks[1].id)
+        // And reparsing preserves that same pairing (first stays first).
+        let reparsed = ListoParser.parse(text)
+        XCTAssertEqual(doc.sections[0].tasks[0].id, reparsed.sections[0].tasks[0].id)
+        XCTAssertEqual(doc.sections[0].tasks[1].id, reparsed.sections[0].tasks[1].id)
     }
 
     func testTabIndentAlsoWorks() {

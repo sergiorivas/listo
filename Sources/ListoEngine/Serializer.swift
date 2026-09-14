@@ -37,7 +37,10 @@ public enum ListoSerializer {
         let box = task.state == .done ? "[x]" : "[ ]"
         var lines = ["\(indent)- \(box) \(task.text)"]
         if let note = task.note {
-            lines.append(contentsOf: note.components(separatedBy: "\n"))
+            // `task.note` is stored dedented (see ListoParser.finalizeNote);
+            // re-add the one indent unit that marks it as this task's note.
+            let noteIndent = indent + "  "
+            lines.append(contentsOf: note.components(separatedBy: "\n").map { $0.isEmpty ? "" : noteIndent + $0 })
         }
         for sub in task.subtasks {
             lines.append(contentsOf: serialize(task: sub, level: level + 1))

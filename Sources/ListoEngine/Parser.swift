@@ -18,31 +18,31 @@ public enum ListoParser {
 
         var looseTasks: [ListoTask] = []
 
+        // Disambiguates duplicate seeds (e.g. two sibling tasks with the
+        // identical text) so they still get distinct, but still stable
+        // across reparses, ids — see `UUID.init(stableSeed:)`.
+        var seedCounts: [String: Int] = [:]
+        func nextID(seed: String) -> UUID {
+            let count = seedCounts[seed, default: 0]
+            seedCounts[seed] = count + 1
+            return UUID(stableSeed: "\(seed)|#\(count)")
+        }
+
         // Most recently parsed task at each indent level (0 = top-level task,
         // 1 = subtask). Notes attach to whichever of these is deepest/most
         // recent, since a note always immediately follows its owning task
         // line in source order.
         var lastTaskAtLevel: [Int: ListoTask] = [:]
         var mostRecentTask: ListoTask?
+        // The indent level (in units) of mostRecentTask's own line — needed
+        // to know exactly how much of a note line's leading whitespace is
+        // structural (marking it as "this task's note") versus the note's
+        // own content, so it can be stripped on the way in.
+        var mostRecentTaskLevel = 0
         var noteBuffer: [String] = []
 
         func currentTargetSection() -> ListoSection? {
             stack.last
-        }
-
-        func finalizeNote() {
-            defer { noteBuffer.removeAll() }
-            guard let owner = mostRecentTask else { return }
-            // Trim leading/trailing fully-blank lines but keep internal ones.
-            var trimmed = noteBuffer
-            while let first = trimmed.first, first.trimmingCharacters(in: .whitespaces).isEmpty {
-                trimmed.removeFirst()
-            }
-            while let last = trimmed.last, last.trimmingCharacters(in: .whitespaces).isEmpty {
-                trimmed.removeLast()
-            }
-            guard !trimmed.isEmpty else { return }
-            owner.note = trimmed.joined(separator: "\n")
         }
 
         func indentLevel(of line: String) -> (level: Int, rest: Substring) {
@@ -60,6 +60,49 @@ public enum ListoParser {
                 }
             }
             return (level, s)
+        }
+
+        /// Strips up to `count` indent units (2 spaces or 1 tab each) from
+        /// the front of `line`, stopping early if it runs out of leading
+        /// whitespace — any indentation beyond that is the note's own
+        /// content (e.g. a nested list inside it), not structure.
+        func stripUnits(_ line: String, count: Int) -> String {
+            var s = Substring(line)
+            var remaining = count
+            while remaining > 0 {
+                if s.hasPrefix("\t") {
+                    s = s.dropFirst()
+                } else if s.hasPrefix("  ") {
+                    s = s.dropFirst(2)
+                } else {
+                    break
+                }
+                remaining -= 1
+            }
+            return String(s)
+        }
+
+        func finalizeNote() {
+            defer { noteBuffer.removeAll() }
+            guard let owner = mostRecentTask else { return }
+            // Trim leading/trailing fully-blank lines but keep internal ones.
+            var trimmed = noteBuffer
+            while let first = trimmed.first, first.trimmingCharacters(in: .whitespaces).isEmpty {
+                trimmed.removeFirst()
+            }
+            while let last = trimmed.last, last.trimmingCharacters(in: .whitespaces).isEmpty {
+                trimmed.removeLast()
+            }
+            guard !trimmed.isEmpty else { return }
+            // Store the note dedented (structural indent removed) so it
+            // round-trips cleanly: ListoEditor.setNote/Serializer re-add
+            // exactly this one indent unit when writing it back. Storing it
+            // raw (with the indent baked in) meant re-editing an existing
+            // note fed its already-indented text back into setNote, which
+            // indented it *again* — one extra level of leading space added
+            // on every save.
+            let dedented = trimmed.map { stripUnits($0, count: mostRecentTaskLevel + 1) }
+            owner.note = dedented.joined(separator: "\n")
         }
 
         func parseCheckbox(_ rest: Substring) -> (TaskState, String)? {
@@ -83,7 +126,9 @@ public enum ListoParser {
                 // Close sections at level >= new level.
                 while stack.count >= level { stack.removeLast() }
 
-                let section = ListoSection(title: title, level: level, lineRange: idx..<(idx + 1))
+                let parentKey = stack.last?.id.uuidString ?? "root"
+                let sectionID = nextID(seed: "section|\(parentKey)|\(level)|\(title)")
+                let section = ListoSection(id: sectionID, title: title, level: level, lineRange: idx..<(idx + 1))
                 if let parent = stack.last {
                     parent.subsections.append(section)
                 } else {
@@ -97,7 +142,18 @@ public enum ListoParser {
 
             if let (state, text) = parseCheckbox(rest) {
                 finalizeNote()
-                let task = ListoTask(text: text, state: state, lineRange: idx..<(idx + 1))
+
+                let taskID: UUID
+                if level == 0 {
+                    let sectionKey = currentTargetSection()?.id.uuidString ?? "loose"
+                    taskID = nextID(seed: "task|\(sectionKey)|top|\(text)")
+                } else if let parentTask = lastTaskAtLevel[level - 1] {
+                    taskID = nextID(seed: "task|sub|\(parentTask.id.uuidString)|\(text)")
+                } else {
+                    let sectionKey = currentTargetSection()?.id.uuidString ?? "loose"
+                    taskID = nextID(seed: "task|\(sectionKey)|fallback|\(text)")
+                }
+                let task = ListoTask(id: taskID, text: text, state: state, lineRange: idx..<(idx + 1))
 
                 if level == 0 {
                     if let section = currentTargetSection() {
@@ -125,6 +181,7 @@ public enum ListoParser {
                     }
                 }
                 mostRecentTask = task
+                mostRecentTaskLevel = level
                 continue
             }
 

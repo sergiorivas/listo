@@ -134,8 +134,8 @@ public enum ListoDiffer {
         }
 
         // More than one structural change at once, or an identity match that
-        // itself required fuzzy guessing, is exactly the "varias líneas se
-        // movieron a la vez" case the spec calls out as needing an LLM.
+        // itself required fuzzy guessing, is exactly the "several lines
+        // moved at once" case the spec calls out as needing an LLM.
         let isAmbiguous = structuralChanges > 1 || (usedFuzzyMatch && structuralChanges > 0)
         if isAmbiguous {
             return .ambiguous(guess: events, oldText: oldText, newText: newText)
@@ -148,7 +148,7 @@ public enum ListoDiffer {
     public static func unresolvedChangeEvent(fileName: String) -> LogEvent {
         LogEvent(
             file: fileName, event: .unresolved, taskID: "-", sectionPath: nil,
-            text: "cambio sin interpretar", source: .freeEdit, interpretedBy: .heuristic
+            text: "unrecognized change", source: .freeEdit, interpretedBy: .heuristic
         )
     }
 

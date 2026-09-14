@@ -50,14 +50,58 @@ final class EditorTests: XCTestCase {
         XCTAssertEqual(editor.document.sections[0].tasks[0].text, "New text")
     }
 
+    func testRenameSection() throws {
+        let editor = makeEditor("# ahora\n- [ ] Task A\n\n# mas tarde\n")
+        let sectionID = editor.document.sections[0].id
+        let event = try editor.renameSection(sectionID: sectionID, newTitle: "hoy")
+        XCTAssertEqual(event.event, .edited)
+        XCTAssertEqual(editor.document.sections[0].title, "hoy")
+        XCTAssertEqual(editor.document.sections[0].tasks.map(\.text), ["Task A"])
+        XCTAssertTrue(editor.currentText.contains("# hoy"))
+    }
+
+    func testRenameSubsectionPreservesLevel() throws {
+        let editor = makeEditor("# backlog\n## prioridad 2\n- [ ] Task A\n")
+        let sub = editor.document.sections[0].subsections[0]
+        _ = try editor.renameSection(sectionID: sub.id, newTitle: "prioridad 1")
+        let renamed = editor.document.sections[0].subsections[0]
+        XCTAssertEqual(renamed.title, "prioridad 1")
+        XCTAssertEqual(renamed.level, 2)
+        XCTAssertTrue(editor.currentText.contains("## prioridad 1"))
+    }
+
     func testSetNoteAddsIndentedLines() throws {
         let editor = makeEditor("# ahora\n- [ ] Task A\n- [ ] Task B\n")
         let taskID = editor.document.sections[0].tasks[0].id
         _ = try editor.setNote(taskID: taskID, note: "line one\nline two")
         let task = editor.document.sections[0].tasks[0]
-        XCTAssertEqual(task.note, "  line one\n  line two")
+        // The file gets the indented lines, but the in-memory note is
+        // stored dedented (see ListoParser.finalizeNote) so re-editing it
+        // doesn't feed already-indented text back into setNote.
+        XCTAssertEqual(task.note, "line one\nline two")
+        XCTAssertTrue(editor.currentText.contains("  line one\n  line two"))
         // Task B must not have shifted into the note.
         XCTAssertEqual(editor.document.sections[0].tasks[1].text, "Task B")
+    }
+
+    /// The bug this guards against: re-saving a note with unchanged content
+    /// must not add another indent level each time.
+    func testResavingNoteDoesNotCompoundIndentation() throws {
+        let editor = makeEditor("# ahora\n- [ ] Task A\n")
+        let taskID = editor.document.sections[0].tasks[0].id
+        _ = try editor.setNote(taskID: taskID, note: "hello")
+
+        // Simulate reopening the note editor: it's seeded from task.note,
+        // exactly as the popover does, then saved back unchanged.
+        for _ in 0..<3 {
+            let currentNote = editor.document.sections[0].tasks[0].note
+            _ = try editor.setNote(taskID: taskID, note: currentNote)
+        }
+
+        let task = editor.document.sections[0].tasks[0]
+        XCTAssertEqual(task.note, "hello")
+        XCTAssertTrue(editor.currentText.contains("  hello"))
+        XCTAssertFalse(editor.currentText.contains("    hello"))
     }
 
     func testIndentMakesSubtaskOfPrecedingSibling() throws {
@@ -73,6 +117,57 @@ final class EditorTests: XCTestCase {
         let editor = makeEditor("# ahora\n- [ ] Only\n")
         let id = editor.document.sections[0].tasks[0].id
         XCTAssertThrowsError(try editor.indentTask(taskID: id))
+    }
+
+    /// A, B as top-level siblings. Indenting B makes it a subtask of A
+    /// (depth 1); Listo's tree is only two levels deep, so indenting it
+    /// again must refuse rather than nest a subtask under a subtask.
+    func testIndentUpToMaxDepthThenRefuses() throws {
+        let editor = makeEditor("# ahora\n- [ ] A\n- [ ] B\n")
+        let bID = editor.document.sections[0].tasks[1].id
+
+        try editor.indentTask(taskID: bID)
+
+        XCTAssertEqual(editor.document.sections[0].tasks.count, 1)
+        let a = editor.document.sections[0].tasks[0]
+        let b = a.subtasks[0]
+        XCTAssertEqual(b.text, "B")
+        XCTAssertEqual(editor.document.depth(of: b), 1)
+
+        XCTAssertThrowsError(try editor.indentTask(taskID: b.id)) { error in
+            XCTAssertEqual(error as? ListoEditorError, .maxDepthReached)
+        }
+    }
+
+    func testOutdentReversesIndent() throws {
+        let editor = makeEditor("# ahora\n- [ ] First\n- [ ] Second\n")
+        let secondID = editor.document.sections[0].tasks[1].id
+        try editor.indentTask(taskID: secondID)
+        XCTAssertEqual(editor.document.sections[0].tasks.count, 1)
+
+        let nestedID = editor.document.sections[0].tasks[0].subtasks[0].id
+        let event = try editor.outdentTask(taskID: nestedID)
+        XCTAssertEqual(event.event, .reindented)
+        XCTAssertEqual(editor.document.sections[0].tasks.map(\.text), ["First", "Second"])
+        XCTAssertEqual(editor.document.sections[0].tasks[0].subtasks.count, 0)
+    }
+
+    func testOutdentTopLevelTaskThrows() {
+        let editor = makeEditor("# ahora\n- [ ] Only\n")
+        let id = editor.document.sections[0].tasks[0].id
+        XCTAssertThrowsError(try editor.outdentTask(taskID: id)) { error in
+            XCTAssertEqual(error as? ListoEditorError, .alreadyTopLevel)
+        }
+    }
+
+    /// Notes are a top-level-task-only feature — Listo's tree is
+    /// deliberately just task + subtask, and only the task carries a note.
+    func testSetNoteOnSubtaskThrows() throws {
+        let editor = makeEditor("# ahora\n- [ ] A\n  - [ ] B\n")
+        let b = editor.document.sections[0].tasks[0].subtasks[0]
+        XCTAssertThrowsError(try editor.setNote(taskID: b.id, note: "nope")) { error in
+            XCTAssertEqual(error as? ListoEditorError, .subtaskNoteNotSupported)
+        }
     }
 
     func testMoveTaskBetweenSections() throws {
@@ -93,6 +188,26 @@ final class EditorTests: XCTestCase {
         let moved = editor.document.sections[1].tasks[0]
         XCTAssertEqual(moved.text, "Task A")
         XCTAssertNotNil(moved.note)
+    }
+
+    func testDeleteSectionRemovesItsTasksAndSubsections() throws {
+        let editor = makeEditor("# ahora\n- [ ] Task A\n\n# backlog\n## prioridad 2\n- [ ] Task B\n\n# mas tarde\n- [ ] Task C\n")
+        let backlogID = editor.document.sections[1].id
+        let event = try editor.deleteSection(sectionID: backlogID)
+        XCTAssertEqual(event.event, .deleted)
+        XCTAssertEqual(editor.document.sections.map(\.title), ["ahora", "mas tarde"])
+        XCTAssertFalse(editor.currentText.contains("Task B"))
+        XCTAssertTrue(editor.currentText.contains("Task A"))
+        XCTAssertTrue(editor.currentText.contains("Task C"))
+    }
+
+    func testDeleteSubtask() throws {
+        let editor = makeEditor("# ahora\n- [ ] Parent\n  - [ ] Child\n")
+        let childID = editor.document.sections[0].tasks[0].subtasks[0].id
+        let event = try editor.deleteTask(taskID: childID)
+        XCTAssertEqual(event.event, .deleted)
+        XCTAssertEqual(editor.document.sections[0].tasks[0].subtasks.count, 0)
+        XCTAssertTrue(editor.document.sections[0].tasks.contains { $0.text == "Parent" })
     }
 
     func testDeleteTask() throws {

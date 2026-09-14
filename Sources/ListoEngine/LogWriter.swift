@@ -49,38 +49,42 @@ public final class LogWriter {
     }
 }
 
-/// Renders log events as the human-readable lines shown in spec §05's table,
-/// e.g. `movida: "Migrar base de datos" de ahora → mas tarde`. Kept separate
-/// from `LogEvent` itself so the wire schema stays exactly the 8 documented
-/// fields with no display-only baggage.
+/// Renders log events as human-readable lines, e.g. `moved: "Migrar base de
+/// datos" from ahora → mas tarde`. Kept separate from `LogEvent` itself so
+/// the wire schema stays exactly the 8 documented fields with no
+/// display-only baggage.
+///
+/// Always English regardless of the app's display language — the log is
+/// meant to be a stable, greppable record (and possibly read by tooling),
+/// not part of the localized UI.
 public enum LogFormatter {
     public static func describe(_ event: LogEvent, previousText: String? = nil) -> String {
         switch event.event {
         case .created:
             let section = sectionLabel(event.sectionPath) ?? ""
-            return "creada: \"\(event.text)\"" + (section.isEmpty ? "" : " en \(section)")
+            return "created: \"\(event.text)\"" + (section.isEmpty ? "" : " in \(section)")
         case .completed:
-            return "completada: \"\(event.text)\""
+            return "completed: \"\(event.text)\""
         case .reopened:
-            return "reabierta: \"\(event.text)\""
+            return "reopened: \"\(event.text)\""
         case .edited:
             if let previousText, previousText != event.text {
-                return "editada: \"\(previousText)\" → \"\(event.text)\""
+                return "edited: \"\(previousText)\" → \"\(event.text)\""
             }
-            return "editada: \"\(event.text)\""
+            return "edited: \"\(event.text)\""
         case .movedSection:
             if case let .move(from, to)? = event.sectionPath {
-                return "movida: \"\(event.text)\" de \(from.joined(separator: " / ")) → \(to.joined(separator: " / "))"
+                return "moved: \"\(event.text)\" from \(from.joined(separator: " / ")) → \(to.joined(separator: " / "))"
             }
-            return "movida: \"\(event.text)\""
+            return "moved: \"\(event.text)\""
         case .reindented:
-            return "\"\(event.text)\" cambió de nivel de indentación"
+            return "\"\(event.text)\" changed indentation level"
         case .noteUpdated:
-            return "notas editadas: \"\(event.text)\""
+            return "note updated: \"\(event.text)\""
         case .deleted:
-            return "eliminada: \"\(event.text)\""
+            return "deleted: \"\(event.text)\""
         case .unresolved:
-            return "cambio sin interpretar (sin clave de API configurada)"
+            return "unrecognized change (no API key configured)"
         }
     }
 

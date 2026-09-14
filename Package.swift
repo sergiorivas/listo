@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Listo",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v14)], // .onKeyPress (Tab/Shift+Tab for indent/outdent) needs macOS 14+
     products: [
         .library(name: "ListoEngine", targets: ["ListoEngine"]),
         .executable(name: "ListoApp", targets: ["ListoApp"]),
@@ -16,8 +16,7 @@ let package = Package(
         .executableTarget(
             name: "ListoApp",
             dependencies: ["ListoEngine"],
-            path: "Sources/ListoApp",
-            resources: [.process("Resources")]
+            path: "Sources/ListoApp"
         ),
         .testTarget(
             name: "ListoEngineTests",

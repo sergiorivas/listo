@@ -71,13 +71,19 @@ public final class ListoSection: Identifiable {
         self.lineRange = lineRange
     }
 
-    /// All tasks in this section and its subsections, depth-first.
+    /// Short id used in log lines, same shape as `ListoTask.shortID`
+    /// (e.g. "s_8f2a"), stable for the lifetime of this in-memory object only.
+    public var shortID: String {
+        "s_" + id.uuidString.prefix(4).lowercased()
+    }
+
+    /// All tasks in this section and its subsections, depth-first — every
+    /// nesting level of subtask, not just the first.
     public var allTasksRecursive: [ListoTask] {
-        var result: [ListoTask] = []
-        for t in tasks {
-            result.append(t)
-            result.append(contentsOf: t.subtasks)
+        func walk(_ tasks: [ListoTask]) -> [ListoTask] {
+            tasks.flatMap { [$0] + walk($0.subtasks) }
         }
+        var result = walk(tasks)
         for s in subsections {
             result.append(contentsOf: s.allTasksRecursive)
         }
@@ -117,22 +123,43 @@ public struct ListoDocument {
         return search(sections, trail: [])
     }
 
-    /// Finds the section directly containing `task` (not recursively through
-    /// subsections), along with the task's parent task if it is a subtask.
+    /// Finds the section containing `task` (searching subsections too),
+    /// along with its direct parent task at any subtask nesting depth —
+    /// `nil` if `task` is itself a top-level task in that section.
     public func location(of task: ListoTask) -> (section: ListoSection, parent: ListoTask?)? {
+        // Outer optional: "found within this list or not". Inner optional:
+        // the parent itself, which is legitimately nil for a top-level task.
+        func searchTasks(_ tasks: [ListoTask], parent: ListoTask?) -> ListoTask?? {
+            for t in tasks {
+                if t.id == task.id { return .some(parent) }
+                if !t.subtasks.isEmpty, let found = searchTasks(t.subtasks, parent: t) {
+                    return found
+                }
+            }
+            return nil
+        }
         func search(_ nodes: [ListoSection]) -> (ListoSection, ListoTask?)? {
             for section in nodes {
-                for t in section.tasks {
-                    if t.id == task.id { return (section, nil) }
-                    if t.subtasks.contains(where: { $0.id == task.id }) {
-                        return (section, t)
-                    }
+                if let found = searchTasks(section.tasks, parent: nil) {
+                    return (section, found)
                 }
                 if let found = search(section.subsections) { return found }
             }
             return nil
         }
         return search(sections)
+    }
+
+    /// Nesting depth of `task` — 0 for a top-level task, 1 for its direct
+    /// subtask, and so on.
+    public func depth(of task: ListoTask) -> Int {
+        var current = task
+        var depth = 0
+        while let parent = location(of: current)?.parent {
+            depth += 1
+            current = parent
+        }
+        return depth
     }
 
     public var allSectionsRecursive: [ListoSection] {
