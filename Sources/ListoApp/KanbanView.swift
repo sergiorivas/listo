@@ -230,6 +230,9 @@ private struct TaskRow: View {
 
     private static let maxDepth = ListoEditor.maxSubtaskDepth
     private var isSelected: Bool { controller.selectedTaskID == task.id }
+    /// Only a top-level task can carry a note — Listo's tree is
+    /// deliberately just task + subtask (see `ListoEditor.setNote`).
+    private var canHaveNote: Bool { depth == 0 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: depth == 0 ? 4 : 2) {
@@ -274,7 +277,7 @@ private struct TaskRow: View {
 
                 titleField
 
-                if depth == 0, task.note == nil {
+                if canHaveNote, task.note == nil {
                     Button {
                         controller.selectedTaskID = task.id
                         isRowFocused = true
@@ -292,7 +295,7 @@ private struct TaskRow: View {
             // happens via the (shared, owned by TaskChip) popover, opened
             // by tapping the note itself. Top-level tasks only; subtasks
             // don't carry notes.
-            if depth == 0, let note = task.note, !note.isEmpty {
+            if canHaveNote, let note = task.note, !note.isEmpty {
                 Text(note)
                     .font(settings.font(.caption, design: .monospaced))
                     .foregroundStyle(.secondary)
@@ -321,29 +324,22 @@ private struct TaskRow: View {
             isRowFocused = true
         })
         .onKeyPress { press in
-            // Handles Tab/Shift+Tab/Return when the row is merely selected
-            // (not text-editing) — the text field has its own handler for
-            // while it's actively focused.
-            guard isRowFocused, !isEditing else { return .ignored }
-            switch press.key {
-            case .tab:
-                if press.modifiers.contains(.shift) {
-                    controller.outdent(taskID: task.id)
-                } else {
-                    controller.indent(taskID: task.id)
-                }
-                return .handled
-            case .return:
-                beginEditing()
-                return .handled
-            default:
-                return .ignored
-            }
+            // Handles Return when the row is merely selected (not
+            // text-editing) — the text field has its own handler for while
+            // it's actively focused. Tab/Shift+Tab used to be handled here
+            // too, but a `@FocusState` flip from inside a tap gesture (how
+            // a row becomes "selected") doesn't reliably acquire real
+            // AppKit focus, so this never reliably fired for those; the
+            // Task menu (ListoApp.swift's `TaskCommands`, via
+            // `@FocusedValue`) is the real, verified mechanism now.
+            guard isRowFocused, !isEditing, press.key == .return else { return .ignored }
+            beginEditing()
+            return .handled
         }
         .onAppear { text = task.text }
         .draggable(task.id.uuidString)
         .contextMenu {
-            if depth == 0 {
+            if canHaveNote {
                 Button {
                     controller.selectedTaskID = task.id
                     onEditNote(NoteEditTarget(id: task.id, initialText: task.note ?? ""))
@@ -392,7 +388,7 @@ private struct TaskRow: View {
     @ViewBuilder
     private var titleField: some View {
         if isEditing {
-            TextField("", text: $text, onCommit: commitEditing)
+            TextField("", text: $text, onCommit: { commitEditing() })
                 .textFieldStyle(.plain)
                 .focusEffectDisabled()
                 .font(depth == 0 ? settings.font(.body) : settings.font(.caption))
@@ -416,9 +412,7 @@ private struct TaskRow: View {
                         // would indent/outdent a task that no longer
                         // exists. Only chain it when nothing changed (a
                         // plain "Tab to indent" with an untouched field).
-                        let renamed = wouldRename
-                        commitEditing()
-                        if !renamed {
+                        if !commitEditing() {
                             if press.modifiers.contains(.shift) {
                                 controller.outdent(taskID: task.id)
                             } else {
@@ -449,29 +443,29 @@ private struct TaskRow: View {
         isEditing = true
     }
 
-    /// Whether calling `commitEditing()` right now would actually rename
-    /// the task (as opposed to a no-op revert of an untouched/blanked-out
-    /// field).
-    private var wouldRename: Bool {
-        let trimmed = text.trimmingCharacters(in: .whitespaces)
-        return !trimmed.isEmpty && trimmed != task.text
-    }
-
-    private func commitEditing() {
+    /// Ends editing, renaming the task if the field actually changed.
+    /// Returns whether it renamed — callers that also want to chain an
+    /// indent/outdent onto the same keystroke (Tab) need to know, since a
+    /// rename gives the task a new content-derived id (`StableID`) that
+    /// would make a chained `task.id` below stale.
+    @discardableResult
+    private func commitEditing() -> Bool {
         // Idempotency guard: ending edit mode (`isEditing = false`) can
         // itself cause `isTextFieldFocused` to flip to false as the field
         // leaves the view tree, which re-fires the `onChange` above and
         // would otherwise call this a second time — using this same
         // (by-then-stale, already-renamed-away) `task.id` and blowing up
         // with "task not found".
-        guard isEditing else { return }
+        guard isEditing else { return false }
         let trimmed = text.trimmingCharacters(in: .whitespaces)
-        if !trimmed.isEmpty, trimmed != task.text {
+        let renamed = !trimmed.isEmpty && trimmed != task.text
+        if renamed {
             controller.rename(taskID: task.id, newText: trimmed)
         } else {
             text = task.text
         }
         isEditing = false
+        return renamed
     }
 
     private func cancelEditing() {

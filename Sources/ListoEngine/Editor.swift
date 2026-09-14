@@ -80,7 +80,7 @@ public final class ListoEditor {
         let event = LogEvent(
             file: fileURL.lastPathComponent,
             event: .created,
-            taskID: taskID(atLine: insertionIndex) ?? "t_????",
+            taskID: taskAt(line: insertionIndex)?.shortID ?? "t_????",
             sectionPath: .path(document.path(to: refetch(section)) ?? [section.title]),
             text: text,
             source: .app,
@@ -121,8 +121,7 @@ public final class ListoEditor {
         let box = task.state == .done ? "[x]" : "[ ]"
         let sectionPath = (document.location(of: task)?.section).map { document.path(to: $0) ?? [$0.title] }
         lines[line] = indent + "- \(box) " + newText
-        try commit()
-        lastActionTaskID = taskUUID(atLine: line)
+        try commit(trackingLine: line)
 
         let event = LogEvent(
             file: fileURL.lastPathComponent,
@@ -229,8 +228,7 @@ public final class ListoEditor {
             insertionIndex -= sourceRange.count
         }
         lines.insert(contentsOf: block, at: insertionIndex)
-        try commit()
-        lastActionTaskID = taskUUID(atLine: insertionIndex)
+        try commit(trackingLine: insertionIndex)
 
         let event = LogEvent(
             file: fileURL.lastPathComponent,
@@ -274,8 +272,7 @@ public final class ListoEditor {
             insertionIndex -= sourceRange.count
         }
         lines.insert(contentsOf: block, at: insertionIndex)
-        try commit()
-        lastActionTaskID = taskUUID(atLine: insertionIndex)
+        try commit(trackingLine: insertionIndex)
 
         let event = LogEvent(
             file: fileURL.lastPathComponent,
@@ -314,8 +311,7 @@ public final class ListoEditor {
             ? targetInsertionIndex - sourceRange.count
             : targetInsertionIndex
         lines.insert(contentsOf: block, at: adjustedIndex)
-        try commit()
-        lastActionTaskID = taskUUID(atLine: adjustedIndex)
+        try commit(trackingLine: adjustedIndex)
 
         let event = LogEvent(
             file: fileURL.lastPathComponent,
@@ -391,6 +387,15 @@ public final class ListoEditor {
         document = ListoParser.parse(text)
     }
 
+    /// `commit()`, then records `lastActionTaskID` as whichever task ends
+    /// up at `line` — the block's own line after `renameTask`/`indentTask`/
+    /// `outdentTask`/`moveTask` moved or relabeled it, so those don't each
+    /// have to pair `commit()` with a separate lookup themselves.
+    private func commit(trackingLine line: Int) throws {
+        try commit()
+        lastActionTaskID = taskAt(line: line)?.id
+    }
+
     private func findTask(_ id: UUID) -> ListoTask? {
         document.allTasksRecursive.first { $0.id == id } ?? document.looseTasks.first { $0.id == id }
     }
@@ -402,15 +407,13 @@ public final class ListoEditor {
         document.allSectionsRecursive.first { $0.title == section.title && $0.level == section.level } ?? section
     }
 
-    private func taskID(atLine line: Int) -> String? {
-        document.allTasksRecursive.first { $0.lineRange?.lowerBound == line }?.shortID
-    }
-
-    /// Full UUID of whichever task now starts at `line`, post-reparse — how
-    /// `lastActionTaskID` re-resolves a task's new (content/position
-    /// derived) id after an action that moved or relabeled it.
-    private func taskUUID(atLine line: Int) -> UUID? {
-        document.allTasksRecursive.first { $0.lineRange?.lowerBound == line }?.id
+    /// Whichever task now starts at `line`, post-reparse — how a fresh
+    /// `LogEvent`'s `taskID` and `lastActionTaskID` (a task's new
+    /// content/position-derived id after an action that moved or relabeled
+    /// it) are both resolved. Named `taskAt`, not `task`, since most call
+    /// sites already have a local `let task` in scope.
+    private func taskAt(line: Int) -> ListoTask? {
+        document.allTasksRecursive.first { $0.lineRange?.lowerBound == line }
     }
 
     /// Contiguous line range spanning a task's own line, its note, and all of
