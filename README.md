@@ -47,11 +47,17 @@ Sources/ListoApp/        SwiftUI app (macOS executable), ADR-001
 
 Tests/ListoEngineTests/  43 tests covering the parser, editor, differ, and log
 Scripts/version.sh       Derives the version from git tags (no manual input)
-Scripts/release.sh       build → codesign → notarytool → staple (§08)
+Scripts/publish_formula.sh Tags + pushes a release, then regenerates
+                         Formula/listo.rb in the tap — the active
+                         distribution path (see "Installing" below)
+Scripts/release.sh       build → codesign → notarytool → staple (§08) — a
+                         second, currently-unused path for once there's a
+                         paid Apple Developer account to sign a pre-built
+                         .app instead of building from source
 Scripts/publish_cask.sh  release.sh + updates the cask's sha256/version +
                          publishes the GitHub release + tags and pushes the
                          version + (optionally) pushes to the tap
-Casks/listo.rb           Homebrew Cask template (§08)
+Casks/listo.rb           Homebrew Cask template for the release.sh path (§08)
 ```
 
 ### Versioning
@@ -59,9 +65,38 @@ Casks/listo.rb           Homebrew Cask template (§08)
 No need to pick or track versions by hand: `Scripts/version.sh` derives one
 from the repo's `vX.Y.Z` tags (the next patch after the latest tag, or the
 exact tag if `HEAD` is already tagged — `0.1.0` if there isn't one yet).
-`release.sh` and `publish_cask.sh` use it automatically when not given an
-explicit version, and `publish_cask.sh` creates and pushes the tag once the
-release is out, so the next run picks up from there on its own.
+`publish_formula.sh`, `release.sh`, and `publish_cask.sh` all use it
+automatically when not given an explicit version, and `publish_formula.sh`/
+`publish_cask.sh` create and push the tag once their release is out, so the
+next run picks up from there on its own.
+
+## Installing
+
+```
+brew tap sergiorivas/tap
+brew install listo
+```
+
+Builds Listo from source on the installing machine (`Scripts/`'s active
+path — see `Formula/listo.rb` in the
+[tap](https://github.com/sergiorivas/homebrew-tap)) and symlinks the result
+into `/Applications`. Since nothing pre-built is downloaded, there's no
+Gatekeeper "unidentified developer" quarantine to fight and no Developer
+ID/notarization needed — trade-off is Homebrew's own prerequisite, Xcode
+Command Line Tools, has to already be present (it is, if `brew` itself is
+installed and working).
+
+To publish a new version once changes are committed:
+
+```
+LISTO_TAP_DIR=/path/to/your/homebrew-tap/checkout Scripts/publish_formula.sh
+```
+
+Runs the tests, tags and pushes the release, downloads the tag's
+GitHub-generated source tarball to hash it (can't be computed locally — has
+to match exactly what `brew install` itself will fetch), and regenerates/
+commits/pushes `Formula/listo.rb` in the tap. `LISTO_GITHUB_REPO` (default
+`sergiorivas/listo`) overrides which repo the formula points at.
 
 ## Development
 
@@ -288,11 +323,17 @@ the app.
 
 ## What's missing for a real release
 
+The build-from-source Formula path ("Installing" above) is live and doesn't
+need any of this — it's only the signed/notarized `release.sh` +
+`publish_cask.sh` path that's still blocked on:
+
 - An Apple Developer account (~$99/year) to sign and notarize (§08) — the
   script is already written, it just needs to run with a real identity.
-- A real GitHub repo and (optionally) a Homebrew tap of your own for
-  `Scripts/publish_cask.sh` — set `LISTO_GITHUB_REPO` and `LISTO_TAP_DIR`
-  before running it; today they point at placeholders (`yourname/listo`).
+- Pointing `Scripts/publish_cask.sh` at a real `LISTO_GITHUB_REPO`/
+  `LISTO_TAP_DIR` — today they default to placeholders (`yourname/listo`).
+
+Independent of either release path:
+
 - An app icon (`Assets.xcassets` / `.icns`) — not included.
 - `outdentTask` doesn't absorb the siblings that followed it as children
   (see above) — simplified semantics on purpose, not a bug, but worth
