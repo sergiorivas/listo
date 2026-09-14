@@ -42,7 +42,17 @@ FORMULA_PATH="$TAP_DIR/Formula/listo.rb"
 command -v shasum >/dev/null 2>&1 || { echo "Missing 'shasum' on PATH" >&2; exit 1; }
 
 echo "==> 1/4 Running tests"
-(cd "$ROOT_DIR" && swift test)
+# On Apple Silicon, a Rosetta-translated shell (e.g. Terminal/iTerm set to
+# "Open using Rosetta") makes the xctest bundle built for arm64 fail to
+# load with an architecture-mismatch error — `swift test` still exits 0
+# for the (separately reported, unrelated, genuinely empty) Swift Testing
+# suite, so this would otherwise silently "pass" zero tests instead of
+# actually running the 43 in Tests/. Forcing an arm64 process sidesteps it.
+if [[ "$(sysctl -in hw.optional.arm64 2>/dev/null)" == "1" ]] && [[ "$(sysctl -in sysctl.proc_translated 2>/dev/null)" == "1" ]]; then
+    (cd "$ROOT_DIR" && arch -arm64 swift test)
+else
+    (cd "$ROOT_DIR" && swift test)
+fi
 
 echo "==> 2/4 Tagging v$VERSION"
 if git -C "$ROOT_DIR" rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
