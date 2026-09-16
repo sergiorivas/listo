@@ -66,8 +66,12 @@ next run picks up from there on its own.
 
 ```
 brew tap sergiorivas/tap
+brew trust --formula sergiorivas/tap/listo
 brew install listo
 ```
+
+`brew trust` is required since this is a non-official (third-party) tap —
+Homebrew won't load its formulae otherwise.
 
 Downloads a prebuilt, ad-hoc-signed `.app` from the latest GitHub release
 (see `Formula/listo.rb` in the

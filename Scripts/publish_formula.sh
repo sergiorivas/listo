@@ -68,7 +68,25 @@ echo "==> 2/5 Building and packaging ($VERSION)"
 
 mkdir -p "$DIST_DIR"
 rm -f "$ZIP_PATH"
-ditto -c -k --keepParent "$APP_BUNDLE" "$ZIP_PATH"
+
+# Homebrew's stage step auto-cd's into an archive's single top-level
+# directory before running `install` (a heuristic for tarballs like
+# "mypkg-1.2.3/" that wrap the real payload) — since Listo.app is itself a
+# directory and would be the *only* top-level entry in a zip made from it
+# alone, that heuristic unwraps it and `install` ends up running from
+# inside Listo.app, where `prefix.install "Listo.app"` fails with ENOENT.
+# Staging a second top-level file alongside the app keeps Homebrew from
+# treating Listo.app as a wrapper to strip.
+STAGE_DIR="$DIST_DIR/stage"
+rm -rf "$STAGE_DIR"
+mkdir -p "$STAGE_DIR"
+ditto "$APP_BUNDLE" "$STAGE_DIR/$APP_NAME.app"
+cat > "$STAGE_DIR/PACKAGE_INFO.txt" <<EOF
+Listo $VERSION
+https://github.com/$GITHUB_REPO
+EOF
+ditto -c -k "$STAGE_DIR" "$ZIP_PATH"
+rm -rf "$STAGE_DIR"
 SHA256="$(shasum -a 256 "$ZIP_PATH" | awk '{print $1}')"
 echo "    sha256 = $SHA256"
 
