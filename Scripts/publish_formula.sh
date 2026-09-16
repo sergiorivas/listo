@@ -1,30 +1,32 @@
 #!/usr/bin/env bash
-# Publishes a new Listo version via the build-from-source Homebrew Formula
-# path: tags this commit, pushes it, and regenerates Formula/listo.rb in
-# your tap so `brew install`/`brew upgrade` build the app locally on the
-# installing machine. Since nothing pre-built is downloaded, there's no
-# Gatekeeper quarantine to fight and no Developer ID/notarization needed —
-# unlike Scripts/publish_cask.sh (a separate, currently-unused path for
-# once there's a paid Apple Developer account to sign/notarize a
-# pre-built .app instead).
+# Publishes a new Listo version via the prebuilt-binary Homebrew Formula
+# path: builds an ad-hoc-signed .app locally, uploads it as a GitHub
+# release asset, and regenerates Formula/listo.rb in your tap to download
+# that zip and install it directly — no `swift build` on the installing
+# machine.
 #
-# Fully hands-off on versioning, same as publish_cask.sh: computed from git
-# tags (Scripts/version.sh) — the next patch after the latest vX.Y.Z tag —
-# and this script creates + pushes that tag itself.
+# There's no Developer ID cert or notarization here — that would need a
+# paid Apple Developer account. Downloaded files get Gatekeeper-quarantined
+# regardless of signing, so the formula's install step strips that with
+# `xattr -cr` rather than fighting notarization — good enough to open an
+# ad-hoc-signed app, not a replacement for the real thing.
+#
+# Fully hands-off on versioning: computed from git tags (Scripts/version.sh)
+# — the next patch after the latest vX.Y.Z tag — and this script creates +
+# pushes that tag itself.
 #
 # Pipeline:
 #   1. swift test
-#   2. Tag this commit vX.Y.Z, push the branch and the tag
-#   3. Download the tag's GitHub-generated source tarball and hash it
-#      (can't be computed locally — must match exactly what `brew install`
-#      itself will download)
-#   4. Regenerate Formula/listo.rb in LISTO_TAP_DIR with the new
-#      version/sha256, commit, and push
+#   2. Build the .app bundle, ad-hoc codesign it, zip it
+#   3. Tag this commit vX.Y.Z, push the branch and the tag
+#   4. Create/update the vX.Y.Z GitHub release and upload the zip asset
+#   5. Regenerate Formula/listo.rb in LISTO_TAP_DIR with the new
+#      version/url/sha256, commit, and push
 #
 # Env vars:
 #   LISTO_GITHUB_REPO   "owner/listo" (default: sergiorivas/listo)
 #   LISTO_TAP_DIR       path to a local checkout of your homebrew tap
-#                       (required)
+#                       (default: ../homebrew-tap, alongside this repo)
 #
 # Usage: Scripts/publish_formula.sh [version]
 #   Just run it with no arguments in the common case. Pass one explicitly
@@ -35,13 +37,20 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION="${1:-$("$ROOT_DIR/Scripts/version.sh")}"
 GITHUB_REPO="${LISTO_GITHUB_REPO:-sergiorivas/listo}"
-TAP_DIR="${LISTO_TAP_DIR:?Set LISTO_TAP_DIR to a local checkout of your homebrew tap (e.g. git@github.com:sergiorivas/homebrew-tap.git)}"
+TAP_DIR="${LISTO_TAP_DIR:-$ROOT_DIR/../homebrew-tap}"
 FORMULA_PATH="$TAP_DIR/Formula/listo.rb"
+
+APP_NAME="Listo"
+DIST_DIR="$ROOT_DIR/dist"
+APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
+ZIP_NAME="Listo-$VERSION.zip"
+ZIP_PATH="$DIST_DIR/$ZIP_NAME"
 
 [ -d "$TAP_DIR/.git" ] || { echo "LISTO_TAP_DIR ($TAP_DIR) is not a git checkout" >&2; exit 1; }
 command -v shasum >/dev/null 2>&1 || { echo "Missing 'shasum' on PATH" >&2; exit 1; }
+command -v gh >/dev/null 2>&1 || { echo "Missing 'gh' on PATH" >&2; exit 1; }
 
-echo "==> 1/4 Running tests"
+echo "==> 1/5 Running tests"
 # On Apple Silicon, a Rosetta-translated shell (e.g. Terminal/iTerm set to
 # "Open using Rosetta") makes the xctest bundle built for arm64 fail to
 # load with an architecture-mismatch error — `swift test` still exits 0
@@ -54,7 +63,16 @@ else
     (cd "$ROOT_DIR" && swift test)
 fi
 
-echo "==> 2/4 Tagging v$VERSION"
+echo "==> 2/5 Building and packaging ($VERSION)"
+"$ROOT_DIR/Scripts/build_app.sh" "$VERSION"
+
+mkdir -p "$DIST_DIR"
+rm -f "$ZIP_PATH"
+ditto -c -k --keepParent "$APP_BUNDLE" "$ZIP_PATH"
+SHA256="$(shasum -a 256 "$ZIP_PATH" | awk '{print $1}')"
+echo "    sha256 = $SHA256"
+
+echo "==> 3/5 Tagging v$VERSION"
 if git -C "$ROOT_DIR" rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
     echo "    v$VERSION already exists locally"
 else
@@ -64,84 +82,44 @@ fi
 git -C "$ROOT_DIR" push origin HEAD
 git -C "$ROOT_DIR" push origin "v$VERSION"
 
-echo "==> 3/4 Hashing the release tarball"
-TARBALL_URL="https://github.com/$GITHUB_REPO/archive/refs/tags/v$VERSION.tar.gz"
-TMP_TARBALL="$(mktemp -t listo-release-XXXXXX).tar.gz"
-trap 'rm -f "$TMP_TARBALL"' EXIT
-# GitHub needs a moment after the tag push before the archive endpoint
-# reflects it; a couple of quick retries avoids a spurious 404.
-for attempt in 1 2 3; do
-    if curl -fsSL "$TARBALL_URL" -o "$TMP_TARBALL"; then
-        break
-    fi
-    [ "$attempt" -eq 3 ] && { echo "Couldn't download $TARBALL_URL" >&2; exit 1; }
-    sleep 3
-done
-SHA256="$(shasum -a 256 "$TMP_TARBALL" | awk '{print $1}')"
+echo "==> 4/5 Publishing the GitHub release"
+if gh release view "v$VERSION" --repo "$GITHUB_REPO" >/dev/null 2>&1; then
+    gh release upload "v$VERSION" "$ZIP_PATH" --repo "$GITHUB_REPO" --clobber
+else
+    gh release create "v$VERSION" "$ZIP_PATH" \
+        --repo "$GITHUB_REPO" \
+        --title "Listo $VERSION" \
+        --notes "See the commit history for what's in this version."
+fi
 
-echo "    version = $VERSION"
-echo "    sha256  = $SHA256"
-
-echo "==> 4/4 Updating the tap formula"
+echo "==> 5/5 Updating the tap formula"
 mkdir -p "$TAP_DIR/Formula"
 cat > "$FORMULA_PATH" <<RUBY
 class Listo < Formula
   desc "To-do list that lives as plain Markdown on disk"
   homepage "https://github.com/$GITHUB_REPO"
-  url "https://github.com/$GITHUB_REPO/archive/refs/tags/v$VERSION.tar.gz"
+  url "https://github.com/$GITHUB_REPO/releases/download/v$VERSION/$ZIP_NAME"
   sha256 "$SHA256"
+  version "$VERSION"
 
   def install
-    system "swift", "build", "-c", "release", "--product", "ListoApp"
-
-    app = prefix/"Listo.app"
-    (app/"Contents/MacOS").mkpath
-    (app/"Contents/Resources").mkpath
-    cp ".build/release/ListoApp", app/"Contents/MacOS/Listo"
-
-    (app/"Contents/Info.plist").write <<~PLIST
-      <?xml version="1.0" encoding="UTF-8"?>
-      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-      <plist version="1.0">
-      <dict>
-          <key>CFBundleExecutable</key><string>Listo</string>
-          <key>CFBundleIdentifier</key><string>com.listo.app</string>
-          <key>CFBundleName</key><string>Listo</string>
-          <key>CFBundleDisplayName</key><string>Listo</string>
-          <key>CFBundleVersion</key><string>#{version}</string>
-          <key>CFBundleShortVersionString</key><string>#{version}</string>
-          <key>CFBundlePackageType</key><string>APPL</string>
-          <key>LSMinimumSystemVersion</key><string>14.0</string>
-          <key>NSHighResolutionCapable</key><true/>
-          <key>CFBundleDocumentTypes</key>
-          <array>
-              <dict>
-                  <key>CFBundleTypeName</key><string>Listo Markdown List</string>
-                  <key>CFBundleTypeRole</key><string>Editor</string>
-                  <key>LSItemContentTypes</key>
-                  <array><string>net.daringfireball.markdown</string></array>
-                  <key>LSHandlerRank</key><string>Alternate</string>
-              </dict>
-          </array>
-      </dict>
-      </plist>
-    PLIST
-
-    # Ad-hoc sign, same as a local \`swift build\`/Xcode run already does —
-    # keeps AMFI/Gatekeeper happy about an unsigned binary. Since the app
-    # is built locally rather than downloaded, macOS never quarantines it
-    # in the first place, so this is belt-and-suspenders, not a
-    # replacement for real notarization.
-    system "codesign", "--force", "--deep", "--sign", "-", app
-
-    prefix.install app
-    system "ln", "-sf", app, "/Applications/Listo.app"
+    # Homebrew already unpacked the zip into the working directory, so
+    # Listo.app is right here. Strip the quarantine flag the download
+    # picked up — the app is only ad-hoc signed, not notarized, so
+    # Gatekeeper would otherwise refuse to open it.
+    system "xattr", "-cr", "."
+    prefix.install "Listo.app"
+    system "ln", "-sf", prefix/"Listo.app", "/Applications/Listo.app"
   end
 
   def caveats
     <<~EOS
       Listo.app was symlinked into /Applications so it shows up in
       Launchpad/Finder like a normal Mac app.
+
+      This build is ad-hoc signed, not notarized by Apple. If macOS still
+      refuses to open it, run:
+        xattr -cr /Applications/Listo.app
 
       Note for \`brew uninstall\`: it only removes files inside the
       Homebrew prefix, so the /Applications symlink is left behind
@@ -164,4 +142,4 @@ RUBY
     fi
 )
 
-echo "==> Done. 'brew install sergiorivas/tap/listo' (or 'brew upgrade listo') should build $VERSION."
+echo "==> Done. 'brew install sergiorivas/tap/listo' (or 'brew upgrade listo') should install $VERSION."
