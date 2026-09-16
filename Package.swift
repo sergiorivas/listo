@@ -16,7 +16,10 @@ let package = Package(
         .executableTarget(
             name: "ListoApp",
             dependencies: ["ListoEngine"],
-            path: "Sources/ListoApp"
+            path: "Sources/ListoApp",
+            // AppIcon.icns is packaged into the .app bundle by Scripts/release.sh,
+            // not needed by `swift build`/`swift run` themselves.
+            exclude: ["Resources/AppIcon.icns"]
         ),
         .testTarget(
             name: "ListoEngineTests",
