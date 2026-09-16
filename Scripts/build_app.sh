@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds Listo.app locally and leaves it in dist/ — no tests, no zip, no
 # tag, no publish. Useful for quickly trying a local build (e.g. `open
-# dist/Listo.app`) without running the full publish_formula.sh pipeline.
+# dist/Listo.app`) without running the full publish_cask.sh pipeline.
 #
 # Ad-hoc signed only (no Developer ID cert, no notarization) — fine to run
 # directly from dist/, since there's no download involved to get

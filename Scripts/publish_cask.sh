@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
-# Publishes a new Listo version via the prebuilt-binary Homebrew Formula
-# path: builds an ad-hoc-signed .app locally, uploads it as a GitHub
-# release asset, and regenerates Formula/listo.rb in your tap to download
-# that zip and install it directly — no `swift build` on the installing
-# machine.
+# Publishes a new Listo version via a prebuilt-binary Homebrew Cask: builds
+# an ad-hoc-signed .app locally, uploads it as a GitHub release asset, and
+# regenerates Casks/listo.rb in your tap to download that zip and install
+# it directly — no `swift build` on the installing machine.
+#
+# This is a Cask, not a Formula, because Homebrew's Formula `install` step
+# runs inside a sandbox that only permits writes under HOMEBREW_PREFIX (and
+# a few other Homebrew-owned paths) — there's no way for a Formula to write
+# Listo.app into /Applications itself. Casks exist precisely to place a
+# macOS .app into /Applications, and aren't subject to that sandbox.
 #
 # There's no Developer ID cert or notarization here — that would need a
 # paid Apple Developer account. Downloaded files get Gatekeeper-quarantined
-# regardless of signing, so the formula's install step strips that with
-# `xattr -cr` rather than fighting notarization — good enough to open an
-# ad-hoc-signed app, not a replacement for the real thing.
+# regardless of signing, so the cask's `postflight` strips that with
+# `xattr -cr` on the installed app — good enough to open an ad-hoc-signed
+# app, not a replacement for the real thing.
 #
 # Fully hands-off on versioning: computed from git tags (Scripts/version.sh)
 # — the next patch after the latest vX.Y.Z tag — and this script creates +
@@ -20,7 +25,7 @@
 #   2. Build the .app bundle, ad-hoc codesign it, zip it
 #   3. Tag this commit vX.Y.Z, push the branch and the tag
 #   4. Create/update the vX.Y.Z GitHub release and upload the zip asset
-#   5. Regenerate Formula/listo.rb in LISTO_TAP_DIR with the new
+#   5. Regenerate Casks/listo.rb in LISTO_TAP_DIR with the new
 #      version/url/sha256, commit, and push
 #
 # Env vars:
@@ -28,7 +33,7 @@
 #   LISTO_TAP_DIR       path to a local checkout of your homebrew tap
 #                       (default: ../homebrew-tap, alongside this repo)
 #
-# Usage: Scripts/publish_formula.sh [version]
+# Usage: Scripts/publish_cask.sh [version]
 #   Just run it with no arguments in the common case. Pass one explicitly
 #   only to override the computed version.
 
@@ -38,7 +43,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION="${1:-$("$ROOT_DIR/Scripts/version.sh")}"
 GITHUB_REPO="${LISTO_GITHUB_REPO:-sergiorivas/listo}"
 TAP_DIR="${LISTO_TAP_DIR:-$ROOT_DIR/../homebrew-tap}"
-FORMULA_PATH="$TAP_DIR/Formula/listo.rb"
+CASK_PATH="$TAP_DIR/Casks/listo.rb"
 
 APP_NAME="Listo"
 DIST_DIR="$ROOT_DIR/dist"
@@ -69,14 +74,13 @@ echo "==> 2/5 Building and packaging ($VERSION)"
 mkdir -p "$DIST_DIR"
 rm -f "$ZIP_PATH"
 
-# Homebrew's stage step auto-cd's into an archive's single top-level
-# directory before running `install` (a heuristic for tarballs like
-# "mypkg-1.2.3/" that wrap the real payload) — since Listo.app is itself a
-# directory and would be the *only* top-level entry in a zip made from it
-# alone, that heuristic unwraps it and `install` ends up running from
-# inside Listo.app, where `prefix.install "Listo.app"` fails with ENOENT.
-# Staging a second top-level file alongside the app keeps Homebrew from
-# treating Listo.app as a wrapper to strip.
+# Homebrew's Formula stage step auto-cd's into an archive's single
+# top-level directory before running `install` (a heuristic for tarballs
+# like "mypkg-1.2.3/" that wrap the real payload) — a zip made from
+# Listo.app alone would have exactly one top-level entry and trip that
+# heuristic. Casks don't do this auto-cd, but staging a second top-level
+# file alongside the app costs nothing and keeps the zip's layout
+# unambiguous either way.
 STAGE_DIR="$DIST_DIR/stage"
 rm -rf "$STAGE_DIR"
 mkdir -p "$STAGE_DIR"
@@ -110,54 +114,51 @@ else
         --notes "See the commit history for what's in this version."
 fi
 
-echo "==> 5/5 Updating the tap formula"
-mkdir -p "$TAP_DIR/Formula"
-cat > "$FORMULA_PATH" <<RUBY
-class Listo < Formula
+echo "==> 5/5 Updating the tap cask"
+mkdir -p "$TAP_DIR/Casks"
+cat > "$CASK_PATH" <<RUBY
+cask "listo" do
+  version "$VERSION"
+  sha256 "$SHA256"
+
+  url "https://github.com/$GITHUB_REPO/releases/download/v#{version}/Listo-#{version}.zip"
+  name "Listo"
   desc "To-do list that lives as plain Markdown on disk"
   homepage "https://github.com/$GITHUB_REPO"
-  url "https://github.com/$GITHUB_REPO/releases/download/v$VERSION/$ZIP_NAME"
-  sha256 "$SHA256"
-  version "$VERSION"
 
-  def install
-    # Homebrew already unpacked the zip into the working directory, so
-    # Listo.app is right here. Strip the quarantine flag the download
-    # picked up — the app is only ad-hoc signed, not notarized, so
-    # Gatekeeper would otherwise refuse to open it.
-    system "xattr", "-cr", "."
-    prefix.install "Listo.app"
-    system "ln", "-sf", prefix/"Listo.app", "/Applications/Listo.app"
+  app "Listo.app"
+
+  postflight do
+    # This build is ad-hoc signed, not notarized by Apple (that needs a
+    # paid Developer ID account) — macOS would otherwise refuse to open
+    # it because of the Gatekeeper quarantine flag the download picked
+    # up.
+    system_command "/usr/bin/xattr", args: ["-cr", "#{appdir}/Listo.app"]
   end
 
-  def caveats
+  caveats do
     <<~EOS
-      Listo.app was symlinked into /Applications so it shows up in
-      Launchpad/Finder like a normal Mac app.
-
       This build is ad-hoc signed, not notarized by Apple. If macOS still
       refuses to open it, run:
-        xattr -cr /Applications/Listo.app
-
-      Note for \`brew uninstall\`: it only removes files inside the
-      Homebrew prefix, so the /Applications symlink is left behind
-      (pointing at a now-missing app) — remove it yourself if needed:
-        rm /Applications/Listo.app
+        xattr -cr #{appdir}/Listo.app
     EOS
   end
 end
 RUBY
+if [ -f "$TAP_DIR/Formula/listo.rb" ]; then
+    git -C "$TAP_DIR" rm -q "Formula/listo.rb"
+fi
 
 (
     cd "$TAP_DIR"
-    git add Formula/listo.rb
+    git add Casks/listo.rb
     if git diff --cached --quiet; then
         echo "    No changes to commit in the tap"
     else
         git commit -m "listo $VERSION"
         git push
-        echo "    Formula published to $TAP_DIR"
+        echo "    Cask published to $TAP_DIR"
     fi
 )
 
-echo "==> Done. 'brew install sergiorivas/tap/listo' (or 'brew upgrade listo') should install $VERSION."
+echo "==> Done. 'brew install --cask sergiorivas/tap/listo' (or 'brew upgrade --cask listo') should install $VERSION."

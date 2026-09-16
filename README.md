@@ -47,9 +47,9 @@ Tests/ListoEngineTests/  43 tests covering the parser, editor, differ, and log
 Scripts/version.sh       Derives the version from git tags (no manual input)
 Scripts/build_app.sh     Builds an ad-hoc-signed Listo.app into dist/ — no
                          tests, tagging, or publishing; just a local build
-Scripts/publish_formula.sh Runs build_app.sh, uploads the zipped result as
+Scripts/publish_cask.sh  Runs build_app.sh, uploads the zipped result as
                          a GitHub release asset, tags + pushes the release,
-                         then regenerates Formula/listo.rb in the tap — the
+                         then regenerates Casks/listo.rb in the tap — the
                          active distribution path (see "Installing" below)
 ```
 
@@ -58,7 +58,7 @@ Scripts/publish_formula.sh Runs build_app.sh, uploads the zipped result as
 No need to pick or track versions by hand: `Scripts/version.sh` derives one
 from the repo's `vX.Y.Z` tags (the next patch after the latest tag, or the
 exact tag if `HEAD` is already tagged — `0.1.0` if there isn't one yet).
-`publish_formula.sh` uses it automatically when not given an explicit
+`publish_cask.sh` uses it automatically when not given an explicit
 version, and creates and pushes the tag once its release is out, so the
 next run picks up from there on its own.
 
@@ -66,31 +66,33 @@ next run picks up from there on its own.
 
 ```
 brew tap sergiorivas/tap
-brew trust --formula sergiorivas/tap/listo
-brew install listo
+brew trust --cask sergiorivas/tap/listo
+brew install --cask listo
 ```
 
 `brew trust` is required since this is a non-official (third-party) tap —
-Homebrew won't load its formulae otherwise.
+Homebrew won't load its casks otherwise.
 
 Downloads a prebuilt, ad-hoc-signed `.app` from the latest GitHub release
-(see `Formula/listo.rb` in the
-[tap](https://github.com/sergiorivas/homebrew-tap)), strips the download's
-Gatekeeper quarantine flag (`xattr -cr`), and symlinks the result into
-`/Applications`.
+(see `Casks/listo.rb` in the
+[tap](https://github.com/sergiorivas/homebrew-tap)) straight into
+`/Applications`, then strips the download's Gatekeeper quarantine flag
+(`xattr -cr`). This is a Cask rather than a Formula because a Formula's
+`install` step runs in a sandbox that can't write to `/Applications` —
+only a Cask can place a `.app` there.
 
 To publish a new version once changes are committed:
 
 ```
-Scripts/publish_formula.sh
+Scripts/publish_cask.sh
 ```
 
 Runs the tests, builds and ad-hoc-signs the `.app`, zips it, tags and
 pushes the release, uploads the zip as a GitHub release asset, and
-regenerates/commits/pushes `Formula/listo.rb` in the tap. Defaults to a
+regenerates/commits/pushes `Casks/listo.rb` in the tap. Defaults to a
 `../homebrew-tap` checkout alongside this repo; override with
 `LISTO_TAP_DIR=/path/to/your/homebrew-tap/checkout`. `LISTO_GITHUB_REPO`
-(default `sergiorivas/listo`) overrides which repo the formula points at.
+(default `sergiorivas/listo`) overrides which repo the cask points at.
 
 ## Development
 
