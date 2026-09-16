@@ -220,16 +220,23 @@ private struct TaskRow: View {
     let allowMove: Bool
     let onEditNote: (NoteEditTarget) -> Void
     @State private var text = ""
-    /// Whether the title is currently a live `TextField`. Click only
-    /// selects the row (see `ownRow`'s doc comment below); this is what
-    /// keeps a plain click from also dropping you into rename mode, which
-    /// is what made right-click and Tab/⇧Tab-on-select unreliable before.
-    @State private var isEditing = false
     @FocusState private var isRowFocused: Bool
     @FocusState private var isTextFieldFocused: Bool
 
     private static let maxDepth = ListoEditor.maxSubtaskDepth
     private var isSelected: Bool { controller.selectedTaskID == task.id }
+    /// Whether the title is currently a live `TextField`. Click only
+    /// selects the row (see `ownRow`'s doc comment below); this is what
+    /// keeps a plain click from also dropping you into rename mode, which
+    /// is what made right-click and Tab/⇧Tab-on-select unreliable before.
+    ///
+    /// Backed by the controller, not row-local `@State` — see
+    /// `DocumentController.editingTaskID`'s doc comment. Return/Tab/⇧Tab all
+    /// give this task a new id, and the `ForEach`s above are keyed by id, so
+    /// the row that replaces this one is a fresh view with fresh `@State`;
+    /// only shared controller state survives that swap to keep the new row
+    /// in edit mode too.
+    private var isEditing: Bool { controller.editingTaskID == task.id }
     /// Only a top-level task can carry a note — Listo's tree is
     /// deliberately just task + subtask (see `ListoEditor.setNote`).
     private var canHaveNote: Bool { depth == 0 }
@@ -385,18 +392,34 @@ private struct TaskRow: View {
     /// of always dropping into rename mode — that conflict was also what
     /// made right-click unreliable, since a click on the title used to hit
     /// a live `TextField` first); a `TextField` once `isEditing` is true.
+    ///
+    /// Return/Tab/⇧Tab are handled here, not via `TextField`'s `onCommit`
+    /// (which only ever means "Return"): all three need to commit whatever
+    /// was typed and then chain a second action — insert-next-sibling for
+    /// Return, indent/outdent for Tab/⇧Tab — onto the *new* id a changed
+    /// title gets, and `onKeyPress` is the one hook that can `return
+    /// .handled` to stop Tab from also doing its default focus-navigation
+    /// thing.
     @ViewBuilder
     private var titleField: some View {
         if isEditing {
-            TextField("", text: $text, onCommit: { commitEditing() })
+            TextField("", text: $text)
                 .textFieldStyle(.plain)
                 .focusEffectDisabled()
                 .font(depth == 0 ? settings.font(.body) : settings.font(.caption))
                 .focused($isTextFieldFocused)
-                .onAppear { isTextFieldFocused = true }
+                // Deferred a tick: setting `@FocusState` synchronously in
+                // `.onAppear` — right as this exact view is being inserted
+                // into the hierarchy by the same update that created it —
+                // doesn't reliably win real AppKit first-responder status
+                // (observed directly: keyboard input kept landing on
+                // whichever field held focus *before* this row appeared).
+                // Letting the view hierarchy settle for one run-loop turn
+                // first makes the focus claim stick.
+                .onAppear { DispatchQueue.main.async { isTextFieldFocused = true } }
                 .onChange(of: isTextFieldFocused) { _, focused in
                     // Clicking away (another row, empty space, another
-                    // control) commits instead of leaving an edit dangling.
+                    // control) commits and stops editing, no chained action.
                     if !focused { commitEditing() }
                 }
                 .onKeyPress { press in
@@ -404,21 +427,25 @@ private struct TaskRow: View {
                     case .escape:
                         cancelEditing()
                         return .handled
+                    case .return:
+                        handleReturn()
+                        return .handled
                     case .tab:
-                        // A rename gives the task a new content-derived id
-                        // (`StableID`), so `task.id` below goes stale the
-                        // instant `commitEditing()` actually renames it —
-                        // chaining an indent/outdent onto it in that case
-                        // would indent/outdent a task that no longer
-                        // exists. Only chain it when nothing changed (a
-                        // plain "Tab to indent" with an untouched field).
-                        if !commitEditing() {
-                            if press.modifiers.contains(.shift) {
-                                controller.outdent(taskID: task.id)
-                            } else {
-                                controller.indent(taskID: task.id)
-                            }
-                        }
+                        handleTab(outdent: press.modifiers.contains(.shift))
+                        return .handled
+                    case KeyEquivalent("\u{19}"):
+                        // Shift+Tab: confirmed by direct diagnostic —
+                        // AppKit reports it as the distinct "backtab"
+                        // control character (0x19), not as `.tab` plus a
+                        // shift modifier, so the `.tab` case above never
+                        // matches it at all.
+                        handleTab(outdent: true)
+                        return .handled
+                    case .upArrow:
+                        handleVerticalNav(direction: -1)
+                        return .handled
+                    case .downArrow:
+                        handleVerticalNav(direction: 1)
                         return .handled
                     default:
                         return .ignored
@@ -440,22 +467,24 @@ private struct TaskRow: View {
     private func beginEditing() {
         text = task.text
         controller.selectedTaskID = task.id
-        isEditing = true
+        controller.editingTaskID = task.id
     }
 
-    /// Ends editing, renaming the task if the field actually changed.
-    /// Returns whether it renamed — callers that also want to chain an
-    /// indent/outdent onto the same keystroke (Tab) need to know, since a
-    /// rename gives the task a new content-derived id (`StableID`) that
-    /// would make a chained `task.id` below stale.
+    /// Commits the title if changed, without chaining any further action —
+    /// used when editing ends because focus just left the field (a click
+    /// elsewhere). Returns whether it renamed.
+    ///
+    /// Idempotency guard: ending edit mode (clearing `editingTaskID`) can
+    /// itself cause `isTextFieldFocused` to flip to false as the field
+    /// leaves the view tree, which re-fires the `onChange` above and would
+    /// otherwise call this a second time — using this same (by-then-stale,
+    /// already-renamed-away) `task.id` and blowing up with "task not
+    /// found". Guarding on `isEditing` catches that: once `editingTaskID`
+    /// has moved on (cleared here, or moved to a different row by
+    /// `handleReturn`/`handleTab`), `isEditing` for *this* row is already
+    /// false.
     @discardableResult
     private func commitEditing() -> Bool {
-        // Idempotency guard: ending edit mode (`isEditing = false`) can
-        // itself cause `isTextFieldFocused` to flip to false as the field
-        // leaves the view tree, which re-fires the `onChange` above and
-        // would otherwise call this a second time — using this same
-        // (by-then-stale, already-renamed-away) `task.id` and blowing up
-        // with "task not found".
         guard isEditing else { return false }
         let trimmed = text.trimmingCharacters(in: .whitespaces)
         let renamed = !trimmed.isEmpty && trimmed != task.text
@@ -464,12 +493,61 @@ private struct TaskRow: View {
         } else {
             text = task.text
         }
-        isEditing = false
+        controller.editingTaskID = nil
         return renamed
     }
 
     private func cancelEditing() {
+        guard isEditing else { return }
         text = task.text
-        isEditing = false
+        controller.editingTaskID = nil
+    }
+
+    /// Return: commit whatever was typed, then insert a new empty sibling
+    /// (same level — a subtask begets a subtask) right after it and move
+    /// edit focus straight there, so typing can continue without
+    /// re-clicking. An empty title breaks the chain instead of piling up
+    /// blank tasks — same as clicking away.
+    private func handleReturn() {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else {
+            cancelEditing()
+            return
+        }
+        if trimmed != task.text {
+            controller.rename(taskID: task.id, newText: trimmed)
+        }
+        controller.insertSiblingAndEdit(afterTaskID: controller.editingTaskID ?? task.id)
+    }
+
+    /// Tab/⇧Tab: commit whatever was typed, then indent/outdent — following
+    /// onto whatever new id the commit gave the task, via `controller.
+    /// editingTaskID` (`perform(followSelectionFrom:)` keeps it current) —
+    /// and stay in edit mode on the row that results, instead of dropping
+    /// back to merely-selected like a stray Tab keystroke used to.
+    private func handleTab(outdent: Bool) {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty, trimmed != task.text {
+            controller.rename(taskID: task.id, newText: trimmed)
+        }
+        let anchorID = controller.editingTaskID ?? task.id
+        if outdent {
+            controller.outdent(taskID: anchorID)
+        } else {
+            controller.indent(taskID: anchorID)
+        }
+    }
+
+    /// ↑/↓: commit whatever was typed, then move both selection and edit
+    /// focus to the previous/next task — reads `controller.selectedTaskID`
+    /// itself (already the post-rename id, via the same `perform(
+    /// followSelectionFrom:)` following used everywhere else here) rather
+    /// than needing an `anchorID` like `handleTab` does.
+    private func handleVerticalNav(direction: Int) {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        if !trimmed.isEmpty, trimmed != task.text {
+            controller.rename(taskID: task.id, newText: trimmed)
+        }
+        controller.selectAdjacent(direction: direction, keepEditing: true)
     }
 }

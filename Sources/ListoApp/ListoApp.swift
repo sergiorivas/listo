@@ -2,20 +2,6 @@ import SwiftUI
 import AppKit
 import ListoEngine
 
-/// Exposes the frontmost window's `DocumentController` to app-level
-/// `.commands` (`TaskCommands` below), via `ContentView`'s
-/// `.focusedSceneValue(\.listoController, controller)`.
-private struct ListoControllerFocusedValueKey: FocusedValueKey {
-    typealias Value = DocumentController
-}
-
-extension FocusedValues {
-    var listoController: DocumentController? {
-        get { self[ListoControllerFocusedValueKey.self] }
-        set { self[ListoControllerFocusedValueKey.self] = newValue }
-    }
-}
-
 /// Indent/outdent-selected-task and clear-selection, as real menu bar
 /// commands rather than a view-level key handler.
 ///
@@ -23,13 +9,61 @@ extension FocusedValues {
 /// AppKit keyboard focus — and a `@FocusState` flip from inside a tap
 /// gesture handler (how a row becomes "selected") doesn't reliably acquire
 /// that focus on macOS, so a merely-selected (not text-editing) row's
-/// Tab/⇧Tab/Escape could silently do nothing. Menu key equivalents don't
-/// have that requirement: they're resolved against the frontmost window
-/// regardless of which specific subview has focus — the same mechanism
-/// already relied on for the Font Size shortcuts below, just scoped here to
-/// whichever document window is currently focused via `@FocusedValue`.
+/// Escape could silently do nothing. Menu key equivalents don't have that
+/// requirement: they're resolved against the frontmost window regardless of
+/// which specific subview has focus — the same mechanism already relied on
+/// for the Font Size shortcuts below, just scoped here to whichever
+/// document window is currently focused.
+///
+/// Indent/Outdent use ⌘]/⌘[, not Tab/⇧Tab, *here* — confirmed directly:
+/// bare Tab/⇧Tab key equivalents on a custom `NSMenuItem` never fire at all
+/// while merely selected (clicking the menu item itself works fine; the
+/// key equivalent just never reaches it), because macOS reserves both for
+/// moving keyboard focus between controls and claims them before
+/// `performKeyEquivalent` ever sees them. That reservation doesn't apply
+/// once a row *is* a live text field — Tab/⇧Tab there are the field's own
+/// `onKeyPress` (`OutlineBoardView`/`KanbanView`), a completely different,
+/// working path — so this only affects the selected-but-not-editing case.
+///
+/// `@FocusedObject`, not `@FocusedValue`: `DocumentController` is an
+/// `ObservableObject`, and `@FocusedValue` only re-evaluates `body` when the
+/// exposed *reference itself* is reassigned (e.g. a different window gains
+/// focus) — it does not subscribe to that object's own `@Published`
+/// changes. With `@FocusedValue` here, every `.disabled(...)` below got
+/// permanently stuck at whatever `selectedTaskID`/`editingTaskID` happened
+/// to be at the *first* time this menu was built (nil, nil — so
+/// permanently disabled), never updating as the user clicked around,
+/// regardless of the actual selection state (confirmed directly: clicking
+/// a task's checkbox visibly toggled it — proving `selectedTaskID` really
+/// was being set — while the menu stayed disabled). `@FocusedObject` is the
+/// variant built for exactly this: it re-invokes `body` on the object's own
+/// `objectWillChange`, matched here by `ContentView`'s
+/// `.focusedSceneObject(controller)` (not `.focusedSceneValue`).
 private struct TaskCommands: Commands {
-    @FocusedValue(\.listoController) private var controller
+    @FocusedObject private var controller: DocumentController?
+
+    /// While a task's title is a live text field, that field's own
+    /// `onKeyPress` owns Tab/⇧Tab/Return for it directly — and, it turns
+    /// out, owning them does *not* stop these app-level shortcuts from also
+    /// firing for the very same keystroke (observed directly: Tab while
+    /// editing indented the task *and* left the original row in place, a
+    /// silent double `indentTask` — one from the field, one from here).
+    ///
+    /// Scoped to "the row this menu command would act on (`selectedTaskID`)
+    /// is the row currently in the text field" — not just "*some* task is
+    /// being edited" — on purpose: `editingTaskID` clearing depends on
+    /// `@FocusState` correctly noticing the field lost focus, which (same
+    /// class of flakiness noted elsewhere in this file) doesn't always
+    /// fire, e.g. when focus moves because the user clicked a *different*
+    /// row rather than pressing Return/Escape. A global "is anything being
+    /// edited" check would then wedge these commands off for every row,
+    /// forever, the moment that happened once. Comparing against
+    /// `selectedTaskID` self-heals: clicking a different row changes
+    /// `selectedTaskID` immediately, which re-enables these regardless of
+    /// whether the stale `editingTaskID` ever got cleared.
+    private var isEditingSelectedTask: Bool {
+        controller?.editingTaskID != nil && controller?.editingTaskID == controller?.selectedTaskID
+    }
 
     var body: some Commands {
         CommandMenu(L("menu.task", "Tarea")) {
@@ -38,16 +72,38 @@ private struct TaskCommands: Commands {
                     controller.indent(taskID: id)
                 }
             }
-            .keyboardShortcut(.tab, modifiers: [])
-            .disabled(controller?.selectedTaskID == nil)
+            .keyboardShortcut("]", modifiers: .command)
+            .disabled(controller?.selectedTaskID == nil || isEditingSelectedTask)
 
             Button(L("task.outdent", "Quitar indentación")) {
                 if let controller, let id = controller.selectedTaskID {
                     controller.outdent(taskID: id)
                 }
             }
-            .keyboardShortcut(.tab, modifiers: [.shift])
-            .disabled(controller?.selectedTaskID == nil)
+            .keyboardShortcut("[", modifiers: .command)
+            .disabled(controller?.selectedTaskID == nil || isEditingSelectedTask)
+
+            Button(L("task.delete", "Eliminar")) {
+                if let controller, let id = controller.selectedTaskID {
+                    controller.delete(taskID: id)
+                }
+            }
+            .keyboardShortcut(.delete, modifiers: [])
+            .disabled(controller?.selectedTaskID == nil || isEditingSelectedTask)
+
+            Divider()
+
+            Button(L("task.previous", "Tarea anterior")) {
+                controller?.selectAdjacent(direction: -1, keepEditing: false)
+            }
+            .keyboardShortcut(.upArrow, modifiers: [])
+            .disabled(controller?.selectedTaskID == nil || isEditingSelectedTask)
+
+            Button(L("task.next", "Tarea siguiente")) {
+                controller?.selectAdjacent(direction: 1, keepEditing: false)
+            }
+            .keyboardShortcut(.downArrow, modifiers: [])
+            .disabled(controller?.selectedTaskID == nil || isEditingSelectedTask)
 
             Divider()
 

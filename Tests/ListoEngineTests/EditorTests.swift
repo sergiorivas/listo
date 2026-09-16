@@ -152,6 +152,43 @@ final class EditorTests: XCTestCase {
         XCTAssertEqual(editor.document.sections[0].tasks[0].subtasks.count, 0)
     }
 
+    func testInsertTaskAfterAddsTopLevelSibling() throws {
+        let editor = makeEditor("# ahora\n- [ ] First\n- [ ] Third\n")
+        let firstID = editor.document.sections[0].tasks[0].id
+        let event = try editor.insertTaskAfter(taskID: firstID, text: "Second")
+        XCTAssertEqual(event.event, .created)
+        XCTAssertEqual(editor.document.sections[0].tasks.map(\.text), ["First", "Second", "Third"])
+        XCTAssertEqual(editor.document.depth(of: editor.document.sections[0].tasks[1]), 0)
+    }
+
+    func testInsertTaskAfterAddsSubtaskSibling() throws {
+        let editor = makeEditor("# ahora\n- [ ] Parent\n  - [ ] Sub A\n  - [ ] Sub C\n")
+        let subAID = editor.document.sections[0].tasks[0].subtasks[0].id
+        let event = try editor.insertTaskAfter(taskID: subAID, text: "Sub B")
+        XCTAssertEqual(event.event, .created)
+        let parent = editor.document.sections[0].tasks[0]
+        XCTAssertEqual(parent.subtasks.map(\.text), ["Sub A", "Sub B", "Sub C"])
+        XCTAssertEqual(editor.document.depth(of: parent.subtasks[1]), 1)
+    }
+
+    /// Pressing Return on a task that already has subtasks must add the new
+    /// sibling below all of them, not split them apart.
+    func testInsertTaskAfterParentWithSubtasksLandsAfterThem() throws {
+        let editor = makeEditor("# ahora\n- [ ] Parent\n  - [ ] Sub A\n- [ ] Other\n")
+        let parentID = editor.document.sections[0].tasks[0].id
+        try editor.insertTaskAfter(taskID: parentID, text: "New sibling")
+        XCTAssertEqual(editor.document.sections[0].tasks.map(\.text), ["Parent", "New sibling", "Other"])
+        XCTAssertEqual(editor.document.sections[0].tasks[0].subtasks.map(\.text), ["Sub A"])
+    }
+
+    func testInsertTaskAfterTracksLastActionTaskID() throws {
+        let editor = makeEditor("# ahora\n- [ ] First\n")
+        let firstID = editor.document.sections[0].tasks[0].id
+        try editor.insertTaskAfter(taskID: firstID, text: "Second")
+        let newID = editor.document.sections[0].tasks[1].id
+        XCTAssertEqual(editor.lastActionTaskID, newID)
+    }
+
     func testOutdentTopLevelTaskThrows() {
         let editor = makeEditor("# ahora\n- [ ] Only\n")
         let id = editor.document.sections[0].tasks[0].id

@@ -31,10 +31,11 @@ public final class ListoEditor {
     /// immediately either way, since it is not the document SwiftUI manages.
     public var autoPersist: Bool
     /// The id of the task most recently touched by `renameTask`,
-    /// `indentTask`, `outdentTask`, or `moveTask` — re-resolved against
-    /// `document` *after* that action's reparse. Ids are content/position
-    /// derived (`StableID`), so any of those four actions gives the task a
-    /// new id; a caller tracking "the same" task across actions (e.g. a UI
+    /// `indentTask`, `outdentTask`, `moveTask`, or `insertTaskAfter` — re-
+    /// resolved against `document` *after* that action's reparse. Ids are
+    /// content/position derived (`StableID`), so any of those actions gives
+    /// the task a new id (for `insertTaskAfter`, the newly created sibling's
+    /// id); a caller tracking "the same" task across actions (e.g. a UI
     /// selection) should follow this rather than keep reusing the id it
     /// passed in, or a second action on what looks like the same row throws
     /// `taskNotFound`. `nil` after an action that doesn't change identity
@@ -189,6 +190,36 @@ public final class ListoEditor {
             taskID: task.shortID,
             sectionPath: sectionPath.map { .path($0) },
             text: task.text,
+            source: .app,
+            interpretedBy: .userAction
+        )
+        return try logWriter.append(event)
+    }
+
+    /// Inserts a new, initially empty sibling task immediately after
+    /// `taskID`, at the same nesting level — a subtask gets a subtask
+    /// sibling, a top-level task gets a top-level sibling — for Modo App's
+    /// "press Return, keep typing the next item" flow. Placed after the
+    /// anchor's whole block (its note and, for a top-level task, its
+    /// subtasks), so pressing Return on a task that already has subtasks
+    /// adds the new sibling below all of them, not in between.
+    @discardableResult
+    public func insertTaskAfter(taskID: UUID, text: String) throws -> LogEvent {
+        guard let task = findTask(taskID) else { throw ListoEditorError.taskNotFound }
+        guard let (section, _) = document.location(of: task) else { throw ListoEditorError.taskNotFound }
+        let ownLine = task.lineRange!.lowerBound
+        let (indent, _) = splitIndent(lines[ownLine])
+        let insertionIndex = fullRange(of: task).upperBound
+        lines.insert(indent + "- [ ] " + text, at: insertionIndex)
+        try commit(trackingLine: insertionIndex)
+
+        let sectionPath = document.path(to: refetch(section)) ?? [section.title]
+        let event = LogEvent(
+            file: fileURL.lastPathComponent,
+            event: .created,
+            taskID: taskAt(line: insertionIndex)?.shortID ?? "t_????",
+            sectionPath: .path(sectionPath),
+            text: text,
             source: .app,
             interpretedBy: .userAction
         )

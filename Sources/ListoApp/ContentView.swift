@@ -32,11 +32,14 @@ struct ContentView: View {
         .frame(minWidth: 480, idealWidth: idealWindowWidth, minHeight: 360, idealHeight: 640)
         // Exposes this window's controller to the app-level Task menu
         // (ListoApp.swift's `TaskCommands`), which is what actually owns
-        // the Tab/⇧Tab/Escape keyboard shortcuts — see that file for why
+        // the Tab/⇧Tab/Delete keyboard shortcuts — see that file for why
         // menu-bar commands, not a hidden in-view button, are what reliably
         // catches these regardless of which row (if any) has real keyboard
-        // focus.
-        .focusedSceneValue(\.listoController, controller)
+        // focus, and why this is `focusedSceneObject`, not
+        // `focusedSceneValue`: the menu needs to react to this object's own
+        // `@Published` changes (selection/edit state), not just to *which*
+        // controller is focused.
+        .focusedSceneObject(controller)
         .toolbar {
             ToolbarItemGroup {
                 Picker(L("picker.mode", "Modo"), selection: $controller.mode) {

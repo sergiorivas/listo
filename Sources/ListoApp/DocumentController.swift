@@ -23,6 +23,14 @@ final class DocumentController: ObservableObject {
     /// rather than per-view state so it survives switching between Kanban
     /// and Outline.
     @Published var selectedTaskID: UUID?
+    /// The task whose title is currently a live text field, à la Workflowy —
+    /// distinct from `selectedTaskID` (a row can be selected without being
+    /// mid-edit). Kept here, not as row-local `@State`, because Return/Tab/
+    /// ⇧Tab all give the edited task a new content/position-derived id
+    /// (`StableID`): shared controller state can follow the id to the row
+    /// that replaces this one, where per-row `@State` would just be
+    /// discarded along with the old row, silently dropping out of edit mode.
+    @Published var editingTaskID: UUID?
     @Published private(set) var logEvents: [LogEvent] = []
     @Published var errorMessage: String?
 
@@ -165,8 +173,57 @@ final class DocumentController: ObservableObject {
         perform(followSelectionFrom: taskID) { try $0.moveTask(taskID: taskID, toSectionID: sectionID) }
     }
 
+    /// Inserts a new, empty sibling task right after `taskID` (same level —
+    /// a subtask gets a subtask sibling) and moves selection/edit focus onto
+    /// it, ready to type — the Return-to-keep-typing-the-next-item action.
+    func insertSiblingAndEdit(afterTaskID taskID: UUID) {
+        guard perform({ try $0.insertTaskAfter(taskID: taskID, text: "") }) else { return }
+        if let newID = editor.lastActionTaskID {
+            selectedTaskID = newID
+            editingTaskID = newID
+        }
+    }
+
     func delete(taskID: UUID) {
-        perform { try $0.deleteTask(taskID: taskID) }
+        guard perform({ try $0.deleteTask(taskID: taskID) }) else { return }
+        if selectedTaskID == taskID { selectedTaskID = nil }
+        if editingTaskID == taskID { editingTaskID = nil }
+    }
+
+    /// Moves selection to the task immediately before (`direction: -1`) or
+    /// after (`direction: +1`) the current selection — ↑/↓ arrow
+    /// navigation. A no-op if nothing's selected or the move would go past
+    /// either end, same as indent/outdent at their limits.
+    ///
+    /// Scoped to the current view style: Outline renders every section as
+    /// one continuous vertical list, so navigation spans the whole
+    /// document; Kanban renders each top-level section as its own
+    /// side-by-side column, so navigation stays within the selected task's
+    /// column — crossing into a different column on ↓ would jump somewhere
+    /// spatially unrelated to where the arrow key points.
+    ///
+    /// `keepEditing`: pass `true` when called from a task's own title field
+    /// (↑/↓ while typing) to move edit focus along with the selection, not
+    /// just the selection itself — mirrors how Return/Tab already keep you
+    /// typing across the task they create or re-indent.
+    func selectAdjacent(direction: Int, keepEditing: Bool) {
+        guard let currentID = selectedTaskID else { return }
+        let orderedIDs: [UUID]
+        switch viewStyle {
+        case .outline:
+            orderedIDs = document.allTasksRecursive.map(\.id)
+        case .kanban:
+            guard let column = document.sections.first(where: { section in
+                section.allTasksRecursive.contains { $0.id == currentID }
+            }) else { return }
+            orderedIDs = column.allTasksRecursive.map(\.id)
+        }
+        guard let idx = orderedIDs.firstIndex(of: currentID) else { return }
+        let newIdx = idx + direction
+        guard orderedIDs.indices.contains(newIdx) else { return }
+        let newID = orderedIDs[newIdx]
+        selectedTaskID = newID
+        if keepEditing { editingTaskID = newID }
     }
 
     func deleteSection(sectionID: UUID) {
@@ -176,29 +233,41 @@ final class DocumentController: ObservableObject {
     /// - Parameter followSelectionFrom: pass the id the action was invoked
     ///   on for `renameTask`/`indentTask`/`outdentTask`/`moveTask` — those
     ///   give the task a new content/position-derived id (`StableID`), so
-    ///   if it's also the current selection, `selectedTaskID` is moved to
-    ///   `editor.lastActionTaskID` afterward. Otherwise a second action on
-    ///   what still looks like the same selected row (another rename, an
-    ///   outdent right after an indent, ...) would reuse the now-stale id
-    ///   and throw `taskNotFound`.
+    ///   `selectedTaskID`/`editingTaskID` are moved to `editor.
+    ///   lastActionTaskID` afterward, whichever of the two currently equal
+    ///   it. Otherwise a second action on what still looks like the same
+    ///   selected/edited row (another rename, an outdent right after an
+    ///   indent, Return-to-indent while typing, ...) would reuse the
+    ///   now-stale id and throw `taskNotFound`, or leave `editingTaskID`
+    ///   pointing at a row that no longer exists — silently dropping out of
+    ///   edit mode.
+    /// - Returns: whether the action actually ran (`false` if it threw an
+    ///   error that `silencing` swallowed, or an unsilenced one that was
+    ///   surfaced via `errorMessage`) — callers that need `editor.
+    ///   lastActionTaskID` afterward (e.g. a brand-new task with no prior id
+    ///   to follow from) should check this first.
+    @discardableResult
     private func perform(
         followSelectionFrom taskID: UUID? = nil,
         silencing: (ListoEditorError) -> Bool = { _ in false },
         _ action: (ListoEditor) throws -> LogEvent
-    ) {
+    ) -> Bool {
         do {
             _ = try action(editor)
             document = editor.document
             lastKnownText = editor.currentText
             fileDocument.text = editor.currentText
-            if let taskID, selectedTaskID == taskID, let newID = editor.lastActionTaskID {
-                selectedTaskID = newID
+            if let taskID, let newID = editor.lastActionTaskID {
+                if selectedTaskID == taskID { selectedTaskID = newID }
+                if editingTaskID == taskID { editingTaskID = newID }
             }
             refreshLog()
+            return true
         } catch let error as ListoEditorError where silencing(error) {
-            return
+            return false
         } catch {
             errorMessage = "\(error)"
+            return false
         }
     }
 
