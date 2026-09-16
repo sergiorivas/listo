@@ -128,12 +128,14 @@ cask "listo" do
 
   app "Listo.app"
 
-  postflight do
+  postflight_steps do
     # This build is ad-hoc signed, not notarized by Apple (that needs a
     # paid Developer ID account) — macOS would otherwise refuse to open
     # it because of the Gatekeeper quarantine flag the download picked
-    # up.
-    system_command "/usr/bin/xattr", args: ["-cr", "#{appdir}/Listo.app"]
+    # up. \`postflight_steps\`/\`run\`, not the free-form \`postflight\`
+    # block: the latter is deprecated by Homebrew in favor of this
+    # declarative form.
+    run "/usr/bin/xattr", args: ["-cr", "{{appdir}}/Listo.app"]
   end
 
   caveats do
