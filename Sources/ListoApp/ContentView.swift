@@ -110,7 +110,7 @@ struct ContentView: View {
     /// than a reasonable screen.
     private var idealWindowWidth: CGFloat {
         guard controller.mode == .app, controller.viewStyle == .kanban else { return 760 }
-        let width = KanbanView.idealContentWidth(columnCount: controller.document.sections.count)
+        let width = KanbanView.idealContentWidth(controller: controller)
         return min(width, 1400)
     }
 }

@@ -1,20 +1,31 @@
 import SwiftUI
+import AppKit
 import ListoEngine
 
 struct KanbanView: View {
     @ObservedObject var controller: DocumentController
     @ObservedObject private var settings = AppSettings.shared
+    @ObservedObject private var layout = KanbanLayoutStore.shared
 
-    static let columnWidth: CGFloat = 340
     static let columnSpacing: CGFloat = 16
     static let horizontalPadding: CGFloat = 16
 
     /// The width that fits every column with no scrolling — used by
     /// `ContentView` to size the window so it opens exactly as wide as it
-    /// needs to be, no wider.
-    static func idealContentWidth(columnCount: Int) -> CGFloat {
-        let count = max(columnCount, 1)
-        return CGFloat(count) * columnWidth + CGFloat(count - 1) * columnSpacing + horizontalPadding * 2
+    /// needs to be, no wider. Reflects each column's actual (possibly
+    /// user-resized or collapsed) width rather than a single fixed
+    /// constant, since columns are no longer all the same size.
+    static func idealContentWidth(controller: DocumentController) -> CGFloat {
+        let sections = controller.document.sections
+        guard !sections.isEmpty else {
+            return KanbanLayoutStore.defaultColumnWidth + horizontalPadding * 2
+        }
+        let widths = sections.map { section in
+            KanbanLayoutStore.shared.isCollapsed(documentKey: controller.documentKey, sectionTitle: section.title)
+                ? KanbanLayoutStore.collapsedColumnWidth
+                : KanbanLayoutStore.shared.width(documentKey: controller.documentKey, sectionTitle: section.title)
+        }
+        return widths.reduce(0, +) + CGFloat(widths.count - 1) * columnSpacing + horizontalPadding * 2
     }
 
     var body: some View {
@@ -23,7 +34,6 @@ struct KanbanView: View {
                 HStack(alignment: .top, spacing: Self.columnSpacing) {
                     ForEach(controller.document.sections, id: \.id) { section in
                         KanbanColumn(controller: controller, section: section)
-                            .frame(width: Self.columnWidth)
                     }
                 }
                 .padding(Self.horizontalPadding)
@@ -70,13 +80,69 @@ private struct SectionDeleteButton: View {
 private struct KanbanColumn: View {
     @ObservedObject var controller: DocumentController
     @ObservedObject private var settings = AppSettings.shared
+    @ObservedObject private var layout = KanbanLayoutStore.shared
     let section: ListoSection
     @State private var newTaskText = ""
     @State private var titleText = ""
+    /// Width while a drag on the resize handle is in progress — laid over
+    /// the persisted width so the column tracks the mouse smoothly; only
+    /// written back to `KanbanLayoutStore` (and to disk) once the drag ends.
+    @State private var dragWidth: CGFloat?
+    /// The column's own width when the current drag started — the base the
+    /// live drag translation is added to, since `DragGesture.translation`
+    /// is always relative to the drag's start, not the previous frame.
+    @State private var dragBaseWidth: CGFloat?
+
+    private var documentKey: String { controller.documentKey }
+    private var isCollapsed: Bool {
+        layout.isCollapsed(documentKey: documentKey, sectionTitle: section.title)
+    }
+    private var storedWidth: CGFloat {
+        layout.width(documentKey: documentKey, sectionTitle: section.title)
+    }
+    private var currentWidth: CGFloat {
+        isCollapsed ? KanbanLayoutStore.collapsedColumnWidth : (dragWidth ?? storedWidth)
+    }
 
     var body: some View {
+        Group {
+            if isCollapsed {
+                collapsedBody
+            } else {
+                expandedBody
+            }
+        }
+        .frame(width: currentWidth, alignment: .top)
+        .background(Color.gray.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .overlay(alignment: .trailing) {
+            if !isCollapsed {
+                resizeHandle
+            }
+        }
+        .dropDestination(for: String.self) { items, _ in
+            guard let idString = items.first, let uuid = UUID(uuidString: idString) else { return false }
+            controller.move(taskID: uuid, toSectionID: section.id)
+            return true
+        }
+    }
+
+    private var collapseButton: some View {
+        Button {
+            layout.setCollapsed(!isCollapsed, documentKey: documentKey, sectionTitle: section.title)
+        } label: {
+            Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .help(isCollapsed ? L("column.expand", "Expandir columna") : L("column.collapse", "Colapsar columna"))
+    }
+
+    private var expandedBody: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 4) {
+                collapseButton
+
                 TextField("", text: $titleText, onCommit: {
                     let trimmed = titleText.trimmingCharacters(in: .whitespaces)
                     if !trimmed.isEmpty, trimmed != section.title {
@@ -129,13 +195,60 @@ private struct KanbanColumn: View {
             }
         }
         .padding(10)
-        .background(Color.gray.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .dropDestination(for: String.self) { items, _ in
-            guard let idString = items.first, let uuid = UUID(uuidString: idString) else { return false }
-            controller.move(taskID: uuid, toSectionID: section.id)
-            return true
+    }
+
+    /// Collapsed columns just show a compact header — title, task count,
+    /// and the button to expand again — with the task list and "add task"
+    /// field hidden, so a column can be tucked out of the way without
+    /// losing or hiding its content from the file.
+    private var collapsedBody: some View {
+        HStack(spacing: 4) {
+            collapseButton
+
+            Text(section.title)
+                .font(settings.font(.headline, design: .monospaced, weight: .semibold))
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            Spacer(minLength: 0)
+
+            Text("\(section.allTasksRecursive.count)")
+                .font(settings.font(.caption))
+                .foregroundStyle(.secondary)
         }
+        .padding(10)
+    }
+
+    /// A thin draggable strip on the column's trailing edge; dragging it
+    /// resizes just this column (persisted per-document in
+    /// `KanbanLayoutStore`, keyed by section title).
+    private var resizeHandle: some View {
+        Rectangle()
+            .fill(Color.clear)
+            .frame(width: 8)
+            .contentShape(Rectangle())
+            .onHover { hovering in
+                if hovering {
+                    NSCursor.resizeLeftRight.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 1, coordinateSpace: .local)
+                    .onChanged { value in
+                        if dragBaseWidth == nil { dragBaseWidth = storedWidth }
+                        let proposed = (dragBaseWidth ?? storedWidth) + value.translation.width
+                        dragWidth = min(max(proposed, KanbanLayoutStore.minColumnWidth), KanbanLayoutStore.maxColumnWidth)
+                    }
+                    .onEnded { _ in
+                        if let dragWidth {
+                            layout.setWidth(dragWidth, documentKey: documentKey, sectionTitle: section.title)
+                        }
+                        dragWidth = nil
+                        dragBaseWidth = nil
+                    }
+            )
     }
 }
 

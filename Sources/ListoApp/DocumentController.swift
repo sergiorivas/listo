@@ -57,6 +57,14 @@ final class DocumentController: ObservableObject {
         FileManager.default.temporaryDirectory.appendingPathComponent("untitled-\(UUID().uuidString).md")
     }
 
+    /// Identifies this document for per-document UI state that isn't part
+    /// of the file's own content (e.g. `KanbanLayoutStore`'s column widths).
+    /// An unsaved scratch document gets a fresh, unpersisted key each time
+    /// (its `scratchURL()` is random), which just means such state doesn't
+    /// carry over until the document has a real path — acceptable since
+    /// there's nothing meaningful to key it by before that.
+    var documentKey: String { editor.fileURL.path }
+
     /// Call when the document's real on-disk URL becomes known (first save
     /// of a brand-new document) so App Mode writes and the log sidecar
     /// start targeting the real file.
