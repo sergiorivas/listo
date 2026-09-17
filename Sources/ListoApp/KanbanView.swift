@@ -569,7 +569,11 @@ private struct TaskRow: View {
                 .font(depth == 0 ? settings.font(.body) : settings.font(.caption))
                 .strikethrough(task.state == .done)
                 .foregroundStyle(task.state == .done ? .secondary : .primary)
-                .lineLimit(1)
+                // Two settings-driven behaviors when a title is wider than
+                // the column: clip it to one line (`.truncate`), or let it
+                // wrap and grow the row's (and so the column's) height
+                // (`.wrap`) — see `KanbanTitleOverflow`.
+                .lineLimit(settings.kanbanTitleOverflow == .truncate ? 1 : nil)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())

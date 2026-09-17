@@ -36,6 +36,15 @@ struct SettingsView: View {
                     }
                 }
 
+                Picker(
+                    L("settings.kanbanTitleOverflow", "Títulos largos en Kanban"),
+                    selection: $settings.kanbanTitleOverflow
+                ) {
+                    ForEach(KanbanTitleOverflow.allCases) { option in
+                        Text(option.displayName).tag(option)
+                    }
+                }
+
                 if settings.baseFontSize != AppSettings.defaultFontSize {
                     LabeledContent("") {
                         Button(L("settings.fontSize.reset", "Restablecer")) {

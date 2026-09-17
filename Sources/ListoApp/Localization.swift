@@ -30,6 +30,22 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     }
 }
 
+/// How a Kanban card's title is shown when it's wider than the column:
+/// clip it to one line (the historical behavior), or let the card grow
+/// taller and wrap it in full.
+enum KanbanTitleOverflow: String, CaseIterable, Identifiable {
+    case truncate
+    case wrap
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .truncate: return L("settings.kanbanTitleOverflow.truncate", "Truncar")
+        case .wrap: return L("settings.kanbanTitleOverflow.wrap", "Ajustar altura")
+        }
+    }
+}
+
 enum AppTheme: String, CaseIterable, Identifiable {
     case system
     case light
@@ -107,6 +123,12 @@ final class AppSettings: ObservableObject {
             reloadToken &+= 1
         }
     }
+    @Published var kanbanTitleOverflow: KanbanTitleOverflow {
+        didSet {
+            UserDefaults.standard.set(kanbanTitleOverflow.rawValue, forKey: Keys.kanbanTitleOverflow)
+            reloadToken &+= 1
+        }
+    }
     /// Bumped on every change above; views apply `.id(settings.reloadToken)`
     /// to force a full re-render (including their `L(...)` calls) without
     /// having to thread `@ObservedObject` reads through every leaf view.
@@ -116,6 +138,7 @@ final class AppSettings: ObservableObject {
         static let language = "listo.settings.language"
         static let theme = "listo.settings.theme"
         static let fontSize = "listo.settings.fontSize"
+        static let kanbanTitleOverflow = "listo.settings.kanbanTitleOverflow"
     }
 
     private init() {
@@ -124,6 +147,8 @@ final class AppSettings: ObservableObject {
         theme = defaults.string(forKey: Keys.theme).flatMap(AppTheme.init(rawValue:)) ?? .system
         let storedSize = defaults.double(forKey: Keys.fontSize)
         baseFontSize = storedSize > 0 ? storedSize : Self.defaultFontSize
+        kanbanTitleOverflow = defaults.string(forKey: Keys.kanbanTitleOverflow)
+            .flatMap(KanbanTitleOverflow.init(rawValue:)) ?? .truncate
     }
 
     var locale: Locale {

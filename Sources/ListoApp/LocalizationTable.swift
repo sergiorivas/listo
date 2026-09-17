@@ -79,6 +79,11 @@ enum LocalizationTable {
             "en": "Every other text size is relative to this one. You can also adjust it anywhere with ⌘+ / ⌘−.",
         ],
         "settings.fontSize.reset": ["es": "Restablecer", "en": "Reset"],
+        "settings.kanbanTitleOverflow": [
+            "es": "Títulos largos en Kanban", "en": "Long titles in Kanban",
+        ],
+        "settings.kanbanTitleOverflow.truncate": ["es": "Truncar", "en": "Truncate"],
+        "settings.kanbanTitleOverflow.wrap": ["es": "Ajustar altura", "en": "Wrap height"],
         "settings.section.appearance": ["es": "Apariencia", "en": "Appearance"],
         "settings.section.assistant": ["es": "Asistente (opcional)", "en": "Assistant (optional)"],
 
