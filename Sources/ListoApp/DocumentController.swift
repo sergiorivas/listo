@@ -141,14 +141,32 @@ final class DocumentController: ObservableObject {
                     }
                 } catch {
                     await MainActor.run {
-                        // No LLM available — log the fallback instead of
-                        // guessing wrong or silently dropping the change.
-                        _ = try? self.editor.logWriter.append(ListoDiffer.unresolvedChangeEvent(fileName: self.editor.fileURL.lastPathComponent))
+                        // No LLM available, or the call failed — log the
+                        // fallback instead of guessing wrong or silently
+                        // dropping the change.
+                        let reason = Self.unresolvedReason(for: error)
+                        _ = try? self.editor.logWriter.append(ListoDiffer.unresolvedChangeEvent(fileName: self.editor.fileURL.lastPathComponent, reason: reason))
                         _ = guess
                         self.refreshLog()
                     }
                 }
             }
+        }
+    }
+
+    /// Turns whatever `LLMClient.interpretDiff` threw into the short reason
+    /// shown by `LogFormatter.describe(.unresolved)` — distinguishing "no
+    /// key configured" from an actual failed call (rate limit, network,
+    /// bad response) so the latter doesn't misleadingly read as the former.
+    private static func unresolvedReason(for error: Error) -> String {
+        switch error {
+        case LLMError.unavailable:
+            return "no API key configured"
+        case LLMError.badResponse(let body):
+            let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? "LLM request failed" : "LLM request failed: \(trimmed.prefix(200))"
+        default:
+            return "LLM request failed: \(error.localizedDescription)"
         }
     }
 

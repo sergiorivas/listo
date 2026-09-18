@@ -144,11 +144,16 @@ public enum ListoDiffer {
     }
 
     /// Fallback event for an ambiguous diff when no LLM is configured or
-    /// reachable — logged instead of failing or guessing (spec §05).
-    public static func unresolvedChangeEvent(fileName: String) -> LogEvent {
+    /// reachable — logged instead of failing or guessing (spec §05). `reason`
+    /// goes into the event's `text` field (already a free-text field for
+    /// every other event kind, so this doesn't touch the on-disk schema) and
+    /// is what `LogFormatter.describe` shows in parentheses — e.g. "no API
+    /// key configured" vs. the underlying network/API error, so a transient
+    /// failure (rate limit, timeout) doesn't read the same as a missing key.
+    public static func unresolvedChangeEvent(fileName: String, reason: String) -> LogEvent {
         LogEvent(
             file: fileName, event: .unresolved, taskID: "-", sectionPath: nil,
-            text: "unrecognized change", source: .freeEdit, interpretedBy: .heuristic
+            text: reason, source: .freeEdit, interpretedBy: .heuristic
         )
     }
 

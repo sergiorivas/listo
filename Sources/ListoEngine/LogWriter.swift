@@ -84,7 +84,7 @@ public enum LogFormatter {
         case .deleted:
             return "deleted: \"\(event.text)\""
         case .unresolved:
-            return "unrecognized change (no API key configured)"
+            return "unrecognized change (\(event.text))"
         }
     }
 

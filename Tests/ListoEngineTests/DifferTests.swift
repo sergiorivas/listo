@@ -68,8 +68,9 @@ final class DifferTests: XCTestCase {
     }
 
     func testUnresolvedFallbackEvent() {
-        let event = ListoDiffer.unresolvedChangeEvent(fileName: "f.md")
+        let event = ListoDiffer.unresolvedChangeEvent(fileName: "f.md", reason: "no API key configured")
         XCTAssertEqual(event.event, .unresolved)
         XCTAssertEqual(event.interpretedBy, .heuristic)
+        XCTAssertEqual(event.text, "no API key configured")
     }
 }
