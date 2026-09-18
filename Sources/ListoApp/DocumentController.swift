@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import ListoEngine
 
@@ -10,6 +11,21 @@ import ListoEngine
 /// own in-flight write to be misread as an external change. That's gone:
 /// free text is only interpreted once, right when the user saves (Cmd+S,
 /// the toolbar Save button, or leaving Modo Libre) — see `handleSave`.
+///
+/// The `ListoEditor` is always constructed with `autoPersist: false` — the
+/// `ListoFileDocument`/`DocumentGroup` machinery is the *only* writer of the
+/// real file, in both modes. Modo App actions used to also have the engine
+/// write the file directly (`autoPersist: true` whenever there was a real
+/// URL), on top of `fileDocument.text` being updated and separately
+/// autosaved by Cocoa — two uncoordinated writers racing for the same path.
+/// Most of the time the extra write was harmless, but if Cocoa's autosave
+/// captured an older snapshot and its (potentially slower, file-coordinated)
+/// disk write landed *after* a newer direct write from the next action, the
+/// newer edit was silently overwritten by the stale one — an intermittent,
+/// hard-to-reproduce "autosave reverted my change." `perform` below now
+/// asks Cocoa's own save pipeline to persist immediately after every action
+/// instead (same call the Modo Libre toolbar Save button already uses), so
+/// there is exactly one writer and immediate persistence, without the race.
 @MainActor
 final class DocumentController: ObservableObject {
     @Published private(set) var document: ListoDocument
@@ -46,7 +62,7 @@ final class DocumentController: ObservableObject {
         self.fileDocument = fileDocument
         self.fileURL = fileURL
         let url = fileURL ?? DocumentController.scratchURL()
-        self.editor = ListoEditor(fileURL: url, initialText: fileDocument.text, autoPersist: fileURL != nil)
+        self.editor = ListoEditor(fileURL: url, initialText: fileDocument.text, autoPersist: false)
         self.document = editor.document
         self.lastKnownText = fileDocument.text
         refreshLog()
@@ -66,12 +82,12 @@ final class DocumentController: ObservableObject {
     var documentKey: String { editor.fileURL.path }
 
     /// Call when the document's real on-disk URL becomes known (first save
-    /// of a brand-new document) so App Mode writes and the log sidecar
-    /// start targeting the real file.
+    /// of a brand-new document) so the log sidecar starts targeting the
+    /// real file.
     func bindToFileURL(_ url: URL) {
         guard fileURL != url else { return }
         fileURL = url
-        editor = ListoEditor(fileURL: url, initialText: fileDocument.text, autoPersist: true)
+        editor = ListoEditor(fileURL: url, initialText: fileDocument.text, autoPersist: false)
         document = editor.document
         lastKnownText = fileDocument.text
         refreshLog()
@@ -270,6 +286,14 @@ final class DocumentController: ObservableObject {
                 if editingTaskID == taskID { editingTaskID = newID }
             }
             refreshLog()
+            // Persist immediately through Cocoa's own save pipeline — the
+            // only writer of the real file (see the class doc comment) —
+            // rather than waiting for its own autosave timer. Only once the
+            // document already has a real path: on a brand-new, never-saved
+            // document this would pop the "Save As" panel on every action.
+            if fileURL != nil {
+                NSApp.sendAction(#selector(NSDocument.save(_:)), to: nil, from: nil)
+            }
             return true
         } catch let error as ListoEditorError where silencing(error) {
             return false
