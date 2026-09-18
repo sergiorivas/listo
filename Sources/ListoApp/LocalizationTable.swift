@@ -90,6 +90,15 @@ enum LocalizationTable {
         "settings.kanbanTitleOverflow.wrap": ["es": "Ajustar altura", "en": "Wrap height"],
         "settings.section.appearance": ["es": "Apariencia", "en": "Appearance"],
         "settings.section.assistant": ["es": "Asistente (opcional)", "en": "Assistant (optional)"],
+        "settings.section.columnColors": ["es": "Colores de columnas", "en": "Column colors"],
+        "settings.firstSectionBg": ["es": "Colorear la primera columna", "en": "Color the first column"],
+        "settings.firstSectionBg.color": ["es": "Color", "en": "Color"],
+        "settings.lastSectionBg": ["es": "Colorear la última columna", "en": "Color the last column"],
+        "settings.lastSectionBg.color": ["es": "Color", "en": "Color"],
+        "settings.sectionBg.hint": [
+            "es": "Pensado para la primera columna (Hoy, Enfoque, …) y la última (Hecho, …), independientemente de cómo se llamen — se aplican por posición, no por nombre.",
+            "en": "Meant for the first column (Today, Focus, …) and the last (Done, …), whatever they're actually named — these apply by position, not by title.",
+        ],
 
         "menu.newList": ["es": "Nueva lista", "en": "New list"],
         "menu.recent": ["es": "Abrir reciente", "en": "Open Recent"],

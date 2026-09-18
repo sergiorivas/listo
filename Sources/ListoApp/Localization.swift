@@ -130,6 +130,12 @@ final class AppSettings: ObservableObject {
     static let minFontSize: Double = 10
     static let maxFontSize: Double = 24
 
+    /// A soft blue — the common meaning of "first column" in this kind of
+    /// board (Today, Focus, …).
+    static let defaultFirstSectionBackground = Color(hex: "4A90E2")!
+    /// A soft green — the common meaning of "last column" (Done, …).
+    static let defaultLastSectionBackground = Color(hex: "34C759")!
+
     @Published var language: AppLanguage {
         didSet {
             UserDefaults.standard.set(language.rawValue, forKey: Keys.language)
@@ -160,6 +166,36 @@ final class AppSettings: ObservableObject {
             reloadToken &+= 1
         }
     }
+    /// Kanban's first/last column (by position, not by title — see
+    /// `KanbanColumn`) can carry its own background tint, since those slots
+    /// conventionally mean something specific (first: Today/Focus; last:
+    /// Done) even though nothing here is tied to those exact names. Each
+    /// has its own enable toggle plus a user-pickable color, seeded with a
+    /// sensible default for that meaning.
+    @Published var firstSectionBackgroundEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(firstSectionBackgroundEnabled, forKey: Keys.firstSectionBackgroundEnabled)
+            reloadToken &+= 1
+        }
+    }
+    @Published var firstSectionBackgroundColor: Color {
+        didSet {
+            UserDefaults.standard.set(firstSectionBackgroundColor.hexString, forKey: Keys.firstSectionBackgroundColor)
+            reloadToken &+= 1
+        }
+    }
+    @Published var lastSectionBackgroundEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(lastSectionBackgroundEnabled, forKey: Keys.lastSectionBackgroundEnabled)
+            reloadToken &+= 1
+        }
+    }
+    @Published var lastSectionBackgroundColor: Color {
+        didSet {
+            UserDefaults.standard.set(lastSectionBackgroundColor.hexString, forKey: Keys.lastSectionBackgroundColor)
+            reloadToken &+= 1
+        }
+    }
     /// Bumped on every change above; views apply `.id(settings.reloadToken)`
     /// to force a full re-render (including their `L(...)` calls) without
     /// having to thread `@ObservedObject` reads through every leaf view.
@@ -171,6 +207,10 @@ final class AppSettings: ObservableObject {
         static let fontSize = "listo.settings.fontSize"
         static let kanbanTitleOverflow = "listo.settings.kanbanTitleOverflow"
         static let llmProvider = "listo.settings.llmProvider"
+        static let firstSectionBackgroundEnabled = "listo.settings.firstSectionBackgroundEnabled"
+        static let firstSectionBackgroundColor = "listo.settings.firstSectionBackgroundColor"
+        static let lastSectionBackgroundEnabled = "listo.settings.lastSectionBackgroundEnabled"
+        static let lastSectionBackgroundColor = "listo.settings.lastSectionBackgroundColor"
     }
 
     private init() {
@@ -183,6 +223,17 @@ final class AppSettings: ObservableObject {
             .flatMap(KanbanTitleOverflow.init(rawValue:)) ?? .truncate
         llmProvider = defaults.string(forKey: Keys.llmProvider)
             .flatMap(LLMProvider.init(rawValue:)) ?? .anthropic
+        firstSectionBackgroundEnabled = defaults.object(forKey: Keys.firstSectionBackgroundEnabled) as? Bool ?? true
+        firstSectionBackgroundColor = defaults.string(forKey: Keys.firstSectionBackgroundColor)
+            .flatMap(Color.init(hex:)) ?? Self.defaultFirstSectionBackground
+        lastSectionBackgroundEnabled = defaults.object(forKey: Keys.lastSectionBackgroundEnabled) as? Bool ?? true
+        lastSectionBackgroundColor = defaults.string(forKey: Keys.lastSectionBackgroundColor)
+            .flatMap(Color.init(hex:)) ?? Self.defaultLastSectionBackground
+    }
+
+    func resetSectionBackgrounds() {
+        firstSectionBackgroundColor = Self.defaultFirstSectionBackground
+        lastSectionBackgroundColor = Self.defaultLastSectionBackground
     }
 
     var locale: Locale {

@@ -66,6 +66,52 @@ struct SettingsView: View {
             }
 
             Section {
+                Toggle(
+                    L("settings.firstSectionBg", "Colorear la primera columna"),
+                    isOn: $settings.firstSectionBackgroundEnabled
+                )
+                if settings.firstSectionBackgroundEnabled {
+                    ColorPicker(
+                        L("settings.firstSectionBg.color", "Color"),
+                        selection: $settings.firstSectionBackgroundColor,
+                        supportsOpacity: false
+                    )
+                }
+
+                Toggle(
+                    L("settings.lastSectionBg", "Colorear la última columna"),
+                    isOn: $settings.lastSectionBackgroundEnabled
+                )
+                if settings.lastSectionBackgroundEnabled {
+                    ColorPicker(
+                        L("settings.lastSectionBg.color", "Color"),
+                        selection: $settings.lastSectionBackgroundColor,
+                        supportsOpacity: false
+                    )
+                }
+
+                if settings.firstSectionBackgroundColor.hexString != AppSettings.defaultFirstSectionBackground.hexString
+                    || settings.lastSectionBackgroundColor.hexString != AppSettings.defaultLastSectionBackground.hexString {
+                    LabeledContent("") {
+                        Button(L("settings.fontSize.reset", "Restablecer")) {
+                            settings.resetSectionBackgrounds()
+                        }
+                        .controlSize(.small)
+                    }
+                }
+
+                Text(L(
+                    "settings.sectionBg.hint",
+                    "Pensado para la primera columna (Hoy, Enfoque, …) y la última (Hecho, …), independientemente de cómo se llamen — se aplican por posición, no por nombre."
+                ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            } header: {
+                Label(L("settings.section.columnColors", "Colores de columnas"), systemImage: "paintpalette")
+            }
+
+            Section {
                 Picker(L("settings.llmProvider", "Proveedor"), selection: $settings.llmProvider) {
                     ForEach(LLMProvider.allCases) { provider in
                         Text(provider.displayName).tag(provider)

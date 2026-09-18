@@ -103,6 +103,21 @@ private struct KanbanColumn: View {
     private var currentWidth: CGFloat {
         isCollapsed ? KanbanLayoutStore.collapsedColumnWidth : (dragWidth ?? storedWidth)
     }
+    /// Position-based, not title-based: the first/last column in document
+    /// order, regardless of what they're named — conventionally Today/Focus
+    /// and Done respectively, but nothing here checks the actual title (see
+    /// `AppSettings.firstSectionBackgroundColor`/`lastSectionBackgroundColor`).
+    /// With exactly one section, first wins rather than layering both tints.
+    private var columnBackground: Color {
+        let sections = controller.document.sections
+        if settings.firstSectionBackgroundEnabled, sections.first?.id == section.id {
+            return settings.firstSectionBackgroundColor.opacity(0.18)
+        }
+        if settings.lastSectionBackgroundEnabled, sections.count > 1, sections.last?.id == section.id {
+            return settings.lastSectionBackgroundColor.opacity(0.18)
+        }
+        return Color.gray.opacity(0.08)
+    }
 
     var body: some View {
         Group {
@@ -113,7 +128,7 @@ private struct KanbanColumn: View {
             }
         }
         .frame(width: currentWidth, alignment: .top)
-        .background(Color.gray.opacity(0.08))
+        .background(columnBackground)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(alignment: .trailing) {
             if !isCollapsed {
