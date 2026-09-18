@@ -75,14 +75,67 @@ struct LogPanelView: View {
             Spacer()
         } else {
             List {
-                ForEach(Array(controller.logEvents.enumerated().reversed()), id: \.offset) { index, event in
-                    let previous = index > 0 ? controller.logEvents[index - 1] : nil
-                    row(for: event, previousText: previous?.text)
+                ForEach(dayGroups, id: \.dayStart) { group in
+                    Section {
+                        ForEach(group.rows, id: \.index) { entry in
+                            row(for: entry.event, previousText: entry.previousText)
+                        }
+                    } header: {
+                        // Always English, like the rest of this panel (see
+                        // LogFormatter.describe) — the log is a stable
+                        // record, not part of the localized UI.
+                        Text(Self.dayLabel(for: group.dayStart))
+                    }
                 }
             }
             .listStyle(.inset)
         }
     }
+
+    private struct DayGroup {
+        let dayStart: Date
+        let rows: [(index: Int, event: LogEvent, previousText: String?)]
+    }
+
+    /// `controller.logEvents` newest-last, grouped by the calendar day
+    /// each event's `ts` falls on — newest day first, newest event first
+    /// within a day, mirroring the flat list's previous newest-first order.
+    /// `previousText` for `LogFormatter.describe`'s "edited: old → new"
+    /// still comes from the immediately preceding event in the *original*
+    /// chronological array, not from within the day group, so splitting an
+    /// edit's context across a day boundary (the edit is today, the
+    /// previous text was set yesterday) still reads correctly.
+    private var dayGroups: [DayGroup] {
+        let calendar = Calendar.current
+        let indexed = controller.logEvents.enumerated().map { index, event in
+            (index: index, event: event, previousText: index > 0 ? controller.logEvents[index - 1].text : nil)
+        }
+        let grouped = Dictionary(grouping: indexed) { calendar.startOfDay(for: $0.event.ts) }
+        return grouped.keys.sorted(by: >).map { day in
+            DayGroup(dayStart: day, rows: grouped[day]!.sorted { $0.index > $1.index })
+        }
+    }
+
+    /// "Today"/"Yesterday"/"N days ago" up through six days back, then a
+    /// plain full date — an unbounded "47 days ago" stops being readable at
+    /// a human glance, which is the whole point of grouping by day.
+    private static func dayLabel(for dayStart: Date) -> String {
+        let calendar = Calendar.current
+        let daysAgo = calendar.dateComponents([.day], from: dayStart, to: calendar.startOfDay(for: Date())).day ?? 0
+        switch daysAgo {
+        case 0: return "Today"
+        case 1: return "Yesterday"
+        case 2...6: return "\(daysAgo) days ago"
+        default: return dayHeaderFormatter.string(from: dayStart)
+        }
+    }
+
+    private static let dayHeaderFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "MMMM d, yyyy"
+        return formatter
+    }()
 
     @ViewBuilder
     private func row(for event: LogEvent, previousText: String?) -> some View {
