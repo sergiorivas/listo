@@ -160,27 +160,39 @@ public final class AnthropicLLMClient: LLMClient {
 /// Talks to OpenRouter's OpenAI-compatible chat completions API with the
 /// user's own OpenRouter key — an alternative to `AnthropicLLMClient` that
 /// lets the user pick any model OpenRouter hosts, including free ones.
+/// Free-tier models each draw from their own shared, rate-limited pool, so
+/// this takes an ordered list of `models` instead of a single one: if a
+/// request fails for any reason, it tries the next model in the list before
+/// giving up — a 429 on one free model doesn't mean the others are
+/// throttled too.
 public final class OpenRouterLLMClient: LLMClient {
+    /// Free models tried in order until one responds.
+    public static let defaultModels = [
+        "qwen/qwen3.8-27b:free",
+        "deepseek/deepseek-v4-flash-0731:free",
+        "google/gemma-4-31b-it:free",
+    ]
+
     private let apiKey: String
-    private let model: String
+    private let models: [String]
     private let session: URLSession
 
-    public init(apiKey: String, model: String = "qwen/qwen3.8-27b:free", session: URLSession = .shared) {
+    public init(apiKey: String, models: [String] = defaultModels, session: URLSession = .shared) {
         self.apiKey = apiKey
-        self.model = model
+        self.models = models
         self.session = session
     }
 
     /// Convenience initializer that reads the key from the Keychain;
     /// returns `nil` (use `UnavailableLLMClient` instead) if none is set.
-    public convenience init?(model: String = "qwen/qwen3.8-27b:free") {
+    public convenience init?(models: [String] = defaultModels) {
         guard let key = KeychainStore.loadAPIKey(provider: .openRouter), !key.isEmpty else { return nil }
-        self.init(apiKey: key, model: model)
+        self.init(apiKey: key, models: models)
     }
 
     public func interpretDiff(fileName: String, oldText: String, newText: String) async throws -> [LogEvent] {
         let prompt = LLMPrompts.interpretDiff(oldText: oldText, newText: newText)
-        let text = try await sendMessage(prompt: prompt)
+        let text = try await sendMessageWithFallback(prompt: prompt)
         guard let jsonData = extractJSONArray(from: text)?.data(using: .utf8) else {
             throw LLMError.badResponse("No JSON array found in LLM response")
         }
@@ -190,10 +202,24 @@ public final class OpenRouterLLMClient: LLMClient {
 
     public func mergeConflict(base: String, local: String, external: String) async throws -> String {
         let prompt = LLMPrompts.mergeConflict(base: base, local: local, external: external)
-        return try await sendMessage(prompt: prompt)
+        return try await sendMessageWithFallback(prompt: prompt)
     }
 
-    private func sendMessage(prompt: String) async throws -> String {
+    /// Tries each model in `models` in order, returning the first success;
+    /// throws the last model's error if all of them fail.
+    private func sendMessageWithFallback(prompt: String) async throws -> String {
+        var lastError: Error = LLMError.unavailable
+        for candidate in models {
+            do {
+                return try await sendMessage(prompt: prompt, model: candidate)
+            } catch {
+                lastError = error
+            }
+        }
+        throw lastError
+    }
+
+    private func sendMessage(prompt: String, model: String) async throws -> String {
         var request = URLRequest(url: URL(string: "https://openrouter.ai/api/v1/chat/completions")!)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
