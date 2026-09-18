@@ -1,9 +1,21 @@
 # Listo
 
-A to-do list that lives as plain Markdown on disk. See the full spec in the
+A to-do list that lives as plain Markdown on disk. Kanban board, Outline
+view, or the raw text itself — Listo keeps all three in sync with a single
+`.md` file, no database or account involved. See the full spec in the
 original artifact; this README maps the spec to the code. For design
 decisions, bug write-ups, and other background on *why* the code looks the
 way it does, see `CLAUDE.md`.
+
+## Screenshots
+
+| Kanban | Outline |
+| --- | --- |
+| ![Kanban board with To Do, In Progress and Done columns](docs/screenshots/kanban.png) | ![Outline view of the same list](docs/screenshots/outline.png) |
+
+| Free Mode (raw Markdown) | Right-click menu |
+| --- | --- |
+| ![Free Mode showing the raw, syntax-highlighted Markdown file](docs/screenshots/free.png) | ![Context menu with Edit note, Indent, Move to, and Delete](docs/screenshots/contextmenu.png) |
 
 ## Structure
 
