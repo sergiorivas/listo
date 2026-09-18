@@ -18,6 +18,24 @@ struct OutlineBoardView: View {
     }
 }
 
+/// Sits next to `SectionDeleteButton` in a section header — adds a new,
+/// empty task at the end of that section and immediately focuses it for
+/// typing (`DocumentController.addTaskAndEdit`). Replaces the
+/// always-visible "new task…" field each section used to end with; Return
+/// from an existing row (`insertSiblingAndEdit`) is the other way in.
+private struct SectionAddTaskButton: View {
+    let onAdd: () -> Void
+
+    var body: some View {
+        Button(action: onAdd) {
+            Image(systemName: "plus")
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .help(L("section.addTask", "Agregar tarea"))
+    }
+}
+
 /// A single trash button for deleting a section — deliberately not a
 /// `Menu`: with only one action, a `Menu` just adds a second, redundant
 /// disclosure affordance next to the icon. Deleting a section takes its
@@ -53,7 +71,6 @@ private struct OutlineSection: View {
     let section: ListoSection
     /// Heading nesting depth (H1/H2/H3), independent of subtask depth.
     let depth: Int
-    @State private var newTaskText = ""
     @State private var titleText = ""
 
     var body: some View {
@@ -72,6 +89,7 @@ private struct OutlineSection: View {
                 .font(headingFont)
                 .onAppear { titleText = section.title }
 
+                SectionAddTaskButton { controller.addTaskAndEdit(toSectionID: section.id) }
                 SectionDeleteButton { controller.deleteSection(sectionID: section.id) }
 
                 Spacer(minLength: 0)
@@ -81,24 +99,6 @@ private struct OutlineSection: View {
             ForEach(section.tasks, id: \.id) { task in
                 OutlineTaskRow(controller: controller, task: task, sectionDepth: depth + 1)
             }
-
-            HStack(spacing: 6) {
-                Image(systemName: "plus.circle.fill")
-                    .foregroundStyle(.secondary)
-                TextField(
-                    L("task.add.placeholder", "Nueva tarea…"),
-                    text: $newTaskText
-                )
-                .textFieldStyle(.roundedBorder)
-                .frame(maxWidth: 320)
-                .onSubmit {
-                    let trimmed = newTaskText.trimmingCharacters(in: .whitespaces)
-                    guard !trimmed.isEmpty else { return }
-                    controller.addTask(text: trimmed, toSectionID: section.id)
-                    newTaskText = ""
-                }
-            }
-            .padding(.leading, CGFloat(depth + 1) * 16)
 
             ForEach(section.subsections, id: \.id) { sub in
                 OutlineSection(controller: controller, section: sub, depth: depth + 1)
@@ -293,6 +293,20 @@ private struct OutlineTaskNode: View {
             return .handled
         }
         .onAppear { text = task.text }
+        // Not just `.onAppear`: two sibling tasks with the same text (most
+        // commonly two blank ones — type into a blank task, hit Return, and
+        // the fresh blank sibling `insertSiblingAndEdit` creates hashes to
+        // the very id the just-renamed task had *before* it got its new
+        // text — see StableID's per-parse, seed-ordinal disambiguation) can
+        // land on the same content-derived id at different points in time.
+        // SwiftUI then sees "the same row" and reuses this view's `@State
+        // text` instead of mounting a fresh one, so the new row would start
+        // out showing whatever was last typed here. Re-syncing whenever
+        // *this row* becomes the edit target — not only when it first
+        // appears — keeps the field correct regardless of view reuse.
+        .onChange(of: isEditing) { _, editing in
+            if editing { text = task.text }
+        }
         .contextMenu {
             if canHaveNote {
                 Button {

@@ -185,6 +185,20 @@ final class DocumentController: ObservableObject {
         perform { try $0.addTask(text: text, toSectionID: sectionID) }
     }
 
+    /// Adds a new, empty top-level task at the end of `sectionID` and moves
+    /// selection/edit focus onto it, ready to type — the section header's
+    /// "+" button (next to its delete button, in both Kanban and Outline).
+    /// Replaces the always-visible "new task…" field each section used to
+    /// end with: adding a task is now either this, or Return from an
+    /// existing row (`insertSiblingAndEdit`), never a separate text field
+    /// competing for attention.
+    func addTaskAndEdit(toSectionID sectionID: UUID) {
+        guard perform({ try $0.addTask(text: "", toSectionID: sectionID) }) else { return }
+        guard let newID = document.allSectionsRecursive.first(where: { $0.id == sectionID })?.tasks.last?.id else { return }
+        selectedTaskID = newID
+        editingTaskID = newID
+    }
+
     func toggle(taskID: UUID) {
         guard perform({ try $0.toggle(taskID: taskID) }) else { return }
         scheduleDoneMoveIfNeeded(forTaskID: taskID)

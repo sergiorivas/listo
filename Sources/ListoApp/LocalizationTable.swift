@@ -32,11 +32,11 @@ enum LocalizationTable {
             "en": "The file changed externally and couldn't be merged automatically (set an API key in Settings).",
         ],
 
-        "task.add.placeholder": ["es": "Nueva tarea…", "en": "New task…"],
         "task.indent": ["es": "Indentar", "en": "Indent"],
         "task.outdent": ["es": "Quitar indentación", "en": "Outdent"],
         "task.moveTo": ["es": "Mover a…", "en": "Move to…"],
         "task.delete": ["es": "Eliminar", "en": "Delete"],
+        "section.addTask": ["es": "Agregar tarea", "en": "Add task"],
         "section.delete": ["es": "Eliminar sección", "en": "Delete section"],
         "column.collapse": ["es": "Colapsar columna", "en": "Collapse column"],
         "column.expand": ["es": "Expandir columna", "en": "Expand column"],

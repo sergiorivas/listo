@@ -48,6 +48,24 @@ struct KanbanView: View {
     }
 }
 
+/// Sits next to `SectionDeleteButton` in a section/column header — adds a
+/// new, empty task at the end of that section and immediately focuses it
+/// for typing (`DocumentController.addTaskAndEdit`). Replaces the
+/// always-visible "new task…" field each section used to end with; Return
+/// from an existing row (`insertSiblingAndEdit`) is the other way in.
+private struct SectionAddTaskButton: View {
+    let onAdd: () -> Void
+
+    var body: some View {
+        Button(action: onAdd) {
+            Image(systemName: "plus")
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .help(L("section.addTask", "Agregar tarea"))
+    }
+}
+
 /// A single trash button for deleting a section — deliberately not a
 /// `Menu`: with only one action, a `Menu` just adds a second, redundant
 /// disclosure affordance next to the icon. Deleting a section takes its
@@ -82,7 +100,6 @@ private struct KanbanColumn: View {
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var layout = KanbanLayoutStore.shared
     let section: ListoSection
-    @State private var newTaskText = ""
     @State private var titleText = ""
     /// Width while a drag on the resize handle is in progress — laid over
     /// the persisted width so the column tracks the mouse smoothly; only
@@ -174,6 +191,7 @@ private struct KanbanColumn: View {
 
                 Spacer(minLength: 0)
 
+                SectionAddTaskButton { controller.addTaskAndEdit(toSectionID: section.id) }
                 SectionDeleteButton { controller.deleteSection(sectionID: section.id) }
             }
 
@@ -190,22 +208,6 @@ private struct KanbanColumn: View {
                         // empty state (spec §04/§09).
                         EmptyView()
                     }
-                }
-            }
-
-            HStack(spacing: 6) {
-                Image(systemName: "plus.circle.fill")
-                    .foregroundStyle(.secondary)
-                TextField(
-                    L("task.add.placeholder", "Nueva tarea…"),
-                    text: $newTaskText
-                )
-                .textFieldStyle(.roundedBorder)
-                .onSubmit {
-                    let trimmed = newTaskText.trimmingCharacters(in: .whitespaces)
-                    guard !trimmed.isEmpty else { return }
-                    controller.addTask(text: trimmed, toSectionID: section.id)
-                    newTaskText = ""
                 }
             }
         }
@@ -292,6 +294,7 @@ private struct KanbanSubgroup: View {
 
                 Spacer(minLength: 0)
 
+                SectionAddTaskButton { controller.addTaskAndEdit(toSectionID: section.id) }
                 SectionDeleteButton { controller.deleteSection(sectionID: section.id) }
             }
             ForEach(section.tasks, id: \.id) { task in
@@ -472,6 +475,20 @@ private struct TaskRow: View {
             return .handled
         }
         .onAppear { text = task.text }
+        // Not just `.onAppear`: two sibling tasks with the same text (most
+        // commonly two blank ones — type into a blank task, hit Return, and
+        // the fresh blank sibling `insertSiblingAndEdit` creates hashes to
+        // the very id the just-renamed task had *before* it got its new
+        // text — see StableID's per-parse, seed-ordinal disambiguation) can
+        // land on the same content-derived id at different points in time.
+        // SwiftUI then sees "the same row" and reuses this view's `@State
+        // text` instead of mounting a fresh one, so the new row would start
+        // out showing whatever was last typed here. Re-syncing whenever
+        // *this row* becomes the edit target — not only when it first
+        // appears — keeps the field correct regardless of view reuse.
+        .onChange(of: isEditing) { _, editing in
+            if editing { text = task.text }
+        }
         .draggable(task.id.uuidString)
         .contextMenu {
             if canHaveNote {
