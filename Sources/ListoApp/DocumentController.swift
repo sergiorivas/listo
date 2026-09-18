@@ -153,7 +153,12 @@ final class DocumentController: ObservableObject {
     }
 
     private static func makeLLMClient() -> LLMClient {
-        AnthropicLLMClient() ?? UnavailableLLMClient()
+        switch AppSettings.shared.llmProvider {
+        case .anthropic:
+            return AnthropicLLMClient() ?? UnavailableLLMClient()
+        case .openRouter:
+            return OpenRouterLLMClient() ?? UnavailableLLMClient()
+        }
     }
 
     // MARK: - Modo App actions

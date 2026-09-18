@@ -59,7 +59,11 @@ enum LocalizationTable {
         "log.export": ["es": "Exportar…", "en": "Export…"],
         "log.empty": ["es": "Todavía no hay eventos.", "en": "No events yet."],
 
-        "settings.apiKey": ["es": "Clave de API de Anthropic", "en": "Anthropic API Key"],
+        "settings.llmProvider": ["es": "Proveedor", "en": "Provider"],
+        "settings.llmProvider.anthropic": ["es": "Anthropic", "en": "Anthropic"],
+        "settings.llmProvider.openRouter": ["es": "OpenRouter", "en": "OpenRouter"],
+        "settings.apiKey.anthropic": ["es": "Clave de API de Anthropic", "en": "Anthropic API Key"],
+        "settings.apiKey.openRouter": ["es": "Clave de API de OpenRouter", "en": "OpenRouter API Key"],
         "settings.apiKey.hint": [
             "es": "Se usa solo para interpretar cambios ambiguos en Modo Libre y para fusionar conflictos de sincronización. Se guarda en el Llavero de macOS — la app no cobra por su uso ni la envía a ningún otro lado.",
             "en": "Used only to interpret ambiguous Free Mode diffs and to reconcile hand-off conflicts. Stored in the macOS Keychain — the app doesn't charge for or forward this.",

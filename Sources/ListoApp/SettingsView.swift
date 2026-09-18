@@ -6,7 +6,7 @@ import ListoEngine
 /// tu propio LLM" API key. Everything here updates live; no relaunch needed.
 struct SettingsView: View {
     @ObservedObject private var settings = AppSettings.shared
-    @State private var apiKey: String = KeychainStore.loadAPIKey() ?? ""
+    @State private var apiKey: String = ""
     @State private var savedRecently = false
 
     var body: some View {
@@ -66,18 +66,25 @@ struct SettingsView: View {
             }
 
             Section {
-                SecureField(
-                    L("settings.apiKey", "Clave de API de Anthropic"),
-                    text: $apiKey
-                )
+                Picker(L("settings.llmProvider", "Proveedor"), selection: $settings.llmProvider) {
+                    ForEach(LLMProvider.allCases) { provider in
+                        Text(provider.displayName).tag(provider)
+                    }
+                }
+                .onChange(of: settings.llmProvider) { _, _ in
+                    reloadKeyField()
+                    savedRecently = false
+                }
+
+                SecureField(apiKeyLabel, text: $apiKey)
 
                 LabeledContent("") {
                     HStack(spacing: 8) {
                         Button {
                             if apiKey.isEmpty {
-                                KeychainStore.clear()
+                                KeychainStore.clear(provider: settings.llmProvider.keychainProvider)
                             } else {
-                                KeychainStore.save(apiKey: apiKey)
+                                KeychainStore.save(apiKey: apiKey, provider: settings.llmProvider.keychainProvider)
                             }
                             savedRecently = true
                         } label: {
@@ -104,5 +111,17 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 480)
         .fixedSize(horizontal: false, vertical: true)
+        .onAppear { reloadKeyField() }
+    }
+
+    private var apiKeyLabel: String {
+        switch settings.llmProvider {
+        case .anthropic: return L("settings.apiKey.anthropic", "Clave de API de Anthropic")
+        case .openRouter: return L("settings.apiKey.openRouter", "Clave de API de OpenRouter")
+        }
+    }
+
+    private func reloadKeyField() {
+        apiKey = KeychainStore.loadAPIKey(provider: settings.llmProvider.keychainProvider) ?? ""
     }
 }

@@ -1,4 +1,5 @@
 import SwiftUI
+import ListoEngine
 
 /// Spec §07 ("Igual en cualquier idioma, de día o de noche") said no manual
 /// switch was needed at launch — system language/appearance was enough.
@@ -42,6 +43,30 @@ enum KanbanTitleOverflow: String, CaseIterable, Identifiable {
         switch self {
         case .truncate: return L("settings.kanbanTitleOverflow.truncate", "Truncar")
         case .wrap: return L("settings.kanbanTitleOverflow.wrap", "Ajustar altura")
+        }
+    }
+}
+
+/// Which LLM backend interprets ambiguous Modo Libre diffs and reconciles
+/// hand-off conflicts (spec §05/§09: "trae tu propio LLM"). Each provider
+/// keeps its own API key in the Keychain (`KeychainStore.Provider`), so
+/// switching here doesn't lose the other one's key.
+enum LLMProvider: String, CaseIterable, Identifiable {
+    case anthropic
+    case openRouter
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .anthropic: return L("settings.llmProvider.anthropic", "Anthropic")
+        case .openRouter: return L("settings.llmProvider.openRouter", "OpenRouter")
+        }
+    }
+
+    var keychainProvider: KeychainStore.Provider {
+        switch self {
+        case .anthropic: return .anthropic
+        case .openRouter: return .openRouter
         }
     }
 }
@@ -129,6 +154,12 @@ final class AppSettings: ObservableObject {
             reloadToken &+= 1
         }
     }
+    @Published var llmProvider: LLMProvider {
+        didSet {
+            UserDefaults.standard.set(llmProvider.rawValue, forKey: Keys.llmProvider)
+            reloadToken &+= 1
+        }
+    }
     /// Bumped on every change above; views apply `.id(settings.reloadToken)`
     /// to force a full re-render (including their `L(...)` calls) without
     /// having to thread `@ObservedObject` reads through every leaf view.
@@ -139,6 +170,7 @@ final class AppSettings: ObservableObject {
         static let theme = "listo.settings.theme"
         static let fontSize = "listo.settings.fontSize"
         static let kanbanTitleOverflow = "listo.settings.kanbanTitleOverflow"
+        static let llmProvider = "listo.settings.llmProvider"
     }
 
     private init() {
@@ -149,6 +181,8 @@ final class AppSettings: ObservableObject {
         baseFontSize = storedSize > 0 ? storedSize : Self.defaultFontSize
         kanbanTitleOverflow = defaults.string(forKey: Keys.kanbanTitleOverflow)
             .flatMap(KanbanTitleOverflow.init(rawValue:)) ?? .truncate
+        llmProvider = defaults.string(forKey: Keys.llmProvider)
+            .flatMap(LLMProvider.init(rawValue:)) ?? .anthropic
     }
 
     var locale: Locale {
