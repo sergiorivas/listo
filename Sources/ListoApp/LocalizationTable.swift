@@ -90,6 +90,7 @@ enum LocalizationTable {
         "settings.kanbanTitleOverflow.wrap": ["es": "Ajustar altura", "en": "Wrap height"],
         "settings.section.appearance": ["es": "Apariencia", "en": "Appearance"],
         "settings.section.assistant": ["es": "Asistente (opcional)", "en": "Assistant (optional)"],
+        "settings.section.behavior": ["es": "Comportamiento", "en": "Behavior"],
         "settings.section.columnColors": ["es": "Colores de columnas", "en": "Column colors"],
         "settings.firstSectionBg": ["es": "Colorear la primera columna", "en": "Color the first column"],
         "settings.firstSectionBg.color": ["es": "Color", "en": "Color"],
@@ -98,6 +99,14 @@ enum LocalizationTable {
         "settings.sectionBg.hint": [
             "es": "Pensado para la primera columna (Hoy, Enfoque, …) y la última (Hecho, …), independientemente de cómo se llamen — se aplican por posición, no por nombre.",
             "en": "Meant for the first column (Today, Focus, …) and the last (Done, …), whatever they're actually named — these apply by position, not by title.",
+        ],
+        "settings.doneMoveDelay": [
+            "es": "Mover a Hecho después de", "en": "Move to Done after",
+        ],
+        "settings.doneMoveDelay.disabled": ["es": "Desactivado", "en": "Disabled"],
+        "settings.doneMoveDelay.hint": [
+            "es": "Al marcar una tarea, si existe una sección cuyo nombre contenga \"Done\", \"Completed\" o \"Finished\", se la mueve al final de esa sección después de esta espera. En 0 la función queda desactivada.",
+            "en": "When you check off a task, if a section's name contains \"Done\", \"Completed\", or \"Finished\", it's moved to the end of that section after this delay. At 0 the feature is disabled.",
         ],
 
         "menu.newList": ["es": "Nueva lista", "en": "New list"],

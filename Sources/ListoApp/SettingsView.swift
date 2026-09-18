@@ -112,6 +112,30 @@ struct SettingsView: View {
             }
 
             Section {
+                LabeledContent(L("settings.doneMoveDelay", "Mover a Hecho después de")) {
+                    Stepper(
+                        value: $settings.doneMoveDelaySeconds,
+                        in: AppSettings.minDoneMoveDelaySeconds...AppSettings.maxDoneMoveDelaySeconds,
+                        step: 1
+                    ) {
+                        Text(doneMoveDelayLabel)
+                            .monospacedDigit()
+                            .frame(width: 80, alignment: .trailing)
+                    }
+                }
+
+                Text(L(
+                    "settings.doneMoveDelay.hint",
+                    "Al marcar una tarea, si existe una sección cuyo nombre contenga \"Done\", \"Completed\" o \"Finished\", se la mueve al final de esa sección después de esta espera. En 0 la función queda desactivada."
+                ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            } header: {
+                Label(L("settings.section.behavior", "Comportamiento"), systemImage: "checkmark.circle")
+            }
+
+            Section {
                 Picker(L("settings.llmProvider", "Proveedor"), selection: $settings.llmProvider) {
                     ForEach(LLMProvider.allCases) { provider in
                         Text(provider.displayName).tag(provider)
@@ -169,5 +193,11 @@ struct SettingsView: View {
 
     private func reloadKeyField() {
         apiKey = KeychainStore.loadAPIKey(provider: settings.llmProvider.keychainProvider) ?? ""
+    }
+
+    private var doneMoveDelayLabel: String {
+        settings.doneMoveDelaySeconds == 0
+            ? L("settings.doneMoveDelay.disabled", "Desactivado")
+            : "\(Int(settings.doneMoveDelaySeconds))s"
     }
 }

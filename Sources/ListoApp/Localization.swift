@@ -130,6 +130,10 @@ final class AppSettings: ObservableObject {
     static let minFontSize: Double = 10
     static let maxFontSize: Double = 24
 
+    static let defaultDoneMoveDelaySeconds: Double = 5
+    static let minDoneMoveDelaySeconds: Double = 0
+    static let maxDoneMoveDelaySeconds: Double = 60
+
     /// A soft blue — the common meaning of "first column" in this kind of
     /// board (Today, Focus, …).
     static let defaultFirstSectionBackground = Color(hex: "4A90E2")!
@@ -163,6 +167,16 @@ final class AppSettings: ObservableObject {
     @Published var llmProvider: LLMProvider {
         didSet {
             UserDefaults.standard.set(llmProvider.rawValue, forKey: Keys.llmProvider)
+            reloadToken &+= 1
+        }
+    }
+    /// Delay before a task checked off into a "Done"/"Completed"/"Finished"
+    /// section (title match, case-insensitive) is bumped to the end of that
+    /// section — see `DocumentController.toggle`. `0` disables the feature
+    /// entirely: the task is left wherever it was checked.
+    @Published var doneMoveDelaySeconds: Double {
+        didSet {
+            UserDefaults.standard.set(doneMoveDelaySeconds, forKey: Keys.doneMoveDelaySeconds)
             reloadToken &+= 1
         }
     }
@@ -207,6 +221,7 @@ final class AppSettings: ObservableObject {
         static let fontSize = "listo.settings.fontSize"
         static let kanbanTitleOverflow = "listo.settings.kanbanTitleOverflow"
         static let llmProvider = "listo.settings.llmProvider"
+        static let doneMoveDelaySeconds = "listo.settings.doneMoveDelaySeconds"
         static let firstSectionBackgroundEnabled = "listo.settings.firstSectionBackgroundEnabled"
         static let firstSectionBackgroundColor = "listo.settings.firstSectionBackgroundColor"
         static let lastSectionBackgroundEnabled = "listo.settings.lastSectionBackgroundEnabled"
@@ -223,6 +238,8 @@ final class AppSettings: ObservableObject {
             .flatMap(KanbanTitleOverflow.init(rawValue:)) ?? .truncate
         llmProvider = defaults.string(forKey: Keys.llmProvider)
             .flatMap(LLMProvider.init(rawValue:)) ?? .anthropic
+        let storedDelay = defaults.object(forKey: Keys.doneMoveDelaySeconds) as? Double
+        doneMoveDelaySeconds = storedDelay ?? Self.defaultDoneMoveDelaySeconds
         firstSectionBackgroundEnabled = defaults.object(forKey: Keys.firstSectionBackgroundEnabled) as? Bool ?? true
         firstSectionBackgroundColor = defaults.string(forKey: Keys.firstSectionBackgroundColor)
             .flatMap(Color.init(hex:)) ?? Self.defaultFirstSectionBackground
