@@ -97,13 +97,13 @@ private struct TaskCommands: Commands {
                 controller?.selectAdjacent(direction: -1, keepEditing: false)
             }
             .keyboardShortcut(.upArrow, modifiers: [])
-            .disabled(controller?.selectedTaskID == nil || isEditingSelectedTask)
+            .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
 
             Button(L("task.next", "Tarea siguiente")) {
                 controller?.selectAdjacent(direction: 1, keepEditing: false)
             }
             .keyboardShortcut(.downArrow, modifiers: [])
-            .disabled(controller?.selectedTaskID == nil || isEditingSelectedTask)
+            .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
 
             Divider()
 
