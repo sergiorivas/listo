@@ -36,50 +36,46 @@ public struct UnavailableLLMClient: LLMClient {
 private enum LLMPrompts {
     static func interpretDiff(oldText: String, newText: String) -> String {
         """
-        Sos el motor de interpretación de cambios de Listo, una app de tareas \
-        que guarda todo como markdown plano. Te paso el contenido de un archivo \
-        antes y después de una edición libre. Decime qué eventos ocurrieron.
+        You are Listo's change-interpretation engine, a task app that stores \
+        everything as plain markdown. I'll give you a file's contents before \
+        and after a free-form edit. Tell me what events happened.
 
-        Devolvé ÚNICAMENTE un array JSON (sin texto extra, sin markdown fences), \
-        donde cada elemento tiene:
-        {"event": "created"|"completed"|"reopened"|"edited"|"moved_section"|"reindented"|"note_updated"|"deleted",
-         "text": "texto actual de la tarea",
-         "section_path": ["seccion", "subseccion"] | null,
-         "section_path_from": ["seccion"] | null,
-         "section_path_to": ["seccion"] | null}
+        Return ONLY a JSON array (no extra text, no markdown fences), where \
+        each element has:
+        {"event": "created"|"completed"|"edited"|"note_updated"|"deleted",
+         "text": "the task's current text",
+         "section_path": ["section", "subsection"] | null}
 
-        Usá section_path_from/section_path_to solo para "moved_section"; \
-        section_path para todos los demás. Distinguí una tarea "movida" de \
-        "borrada + creada" comparando el texto: si el texto es el mismo o muy \
-        similar en ambas versiones, es la misma tarea.
+        Distinguish an "edited" task from a "deleted" one plus a new \
+        "created" one by comparing the text: if the text is the same or \
+        very similar in both versions, it's the same task, edited.
 
-        ANTES:
+        BEFORE:
         \(oldText)
 
-        DESPUÉS:
+        AFTER:
         \(newText)
         """
     }
 
     static func mergeConflict(base: String, local: String, external: String) -> String {
         """
-        Sos el resolutor de conflictos de Listo. El archivo cambió por fuera \
-        mientras el usuario editaba en Modo Libre. Fusioná ambas versiones \
-        preservando toda la intención de cada una (tareas agregadas, \
-        completadas, editadas o movidas en cualquiera de las dos). Si algo \
-        realmente choca, preferí conservar ambos cambios antes que descartar \
-        uno.
+        You are Listo's conflict resolver. The file changed externally while \
+        the user was editing in Free Mode. Merge both versions, preserving \
+        the full intent of each (tasks added, completed, edited, or moved in \
+        either one). If something genuinely conflicts, prefer keeping both \
+        changes over discarding either.
 
-        Devolvé ÚNICAMENTE el markdown fusionado final, sin explicaciones ni \
-        fences de código.
+        Return ONLY the final merged markdown, with no explanations or code \
+        fences.
 
-        VERSIÓN BASE (antes de que empezaran a divergir):
+        BASE VERSION (before they started to diverge):
         \(base)
 
-        VERSIÓN LOCAL (lo que el usuario estaba escribiendo):
+        LOCAL VERSION (what the user was writing):
         \(local)
 
-        VERSIÓN EXTERNA (lo que cambió en disco):
+        EXTERNAL VERSION (what changed on disk):
         \(external)
         """
     }
@@ -256,22 +252,12 @@ private struct LLMEventDTO: Decodable {
     let event: String
     let text: String
     let section_path: [String]?
-    let section_path_from: [String]?
-    let section_path_to: [String]?
 
     func toLogEvent(fileName: String) -> LogEvent? {
         guard let kind = LogEvent.Kind(rawValue: event) else { return nil }
-        let path: LogEvent.SectionPath?
-        if let from = section_path_from, let to = section_path_to {
-            path = .move(from: from, to: to)
-        } else if let plain = section_path {
-            path = .path(plain)
-        } else {
-            path = nil
-        }
         let taskID = "t_" + UUID().uuidString.prefix(4).lowercased()
         return LogEvent(
-            file: fileName, event: kind, taskID: taskID, sectionPath: path,
+            file: fileName, event: kind, taskID: taskID, sectionPath: section_path.map { .path($0) },
             text: text, source: .freeEdit, interpretedBy: .llm
         )
     }
