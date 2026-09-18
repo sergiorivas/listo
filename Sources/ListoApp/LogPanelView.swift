@@ -95,7 +95,7 @@ struct LogPanelView: View {
                 Text(LogFormatter.describe(event, previousText: previousText))
                     .font(AppSettings.shared.font(.body))
                 HStack(spacing: 6) {
-                    Text(event.ts, style: .time)
+                    Text(Self.timestampFormatter.string(from: event.ts))
                     Text("· \(sourceLabel(event.source)) · \(interpretedLabel(event.interpretedBy))")
                 }
                 .font(AppSettings.shared.font(.caption))
@@ -145,6 +145,20 @@ struct LogPanelView: View {
 
     // Always English, like LogFormatter.describe — the log is a stable,
     // greppable record, not part of the localized UI (for now).
+    /// `event.ts` already stores the full date (spec §05's ISO8601
+    /// timestamp), but `Text(_:style:.time)` only ever renders the
+    /// time-of-day — dropping the date even for an event from a previous
+    /// day. Fixed en_US_POSIX formatting matches the rest of this panel
+    /// (`sourceLabel`/`interpretedLabel` below): always English, not tied
+    /// to `AppSettings.language`, since the log is a stable record for
+    /// grep/external tools, not part of the localized UI.
+    private static let timestampFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return formatter
+    }()
+
     private func sourceLabel(_ s: LogEvent.Source) -> String {
         s == .app ? "App Mode" : "Free Mode"
     }
