@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Listo</title>
+<meta name="description" content="A to-do list that lives as plain Markdown on disk.">
+<link rel="icon" href="icon.png">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+  :root{
+    --bg: #EEF0F4;
+    --surface: #FFFFFF;
+    --surface-2: #E4E7ED;
+    --text: #14161C;
+    --text-muted: #575B67;
+    --accent: #4B3FD6;
+    --accent-ink: #FFFFFF;
+    --border: #D7DAE2;
+    --mono-bg: #14161C;
+    --mono-text: #E7E4DC;
+    --mono-text-dim: #8B8E98;
+    --green: #4F8F6C;
+    --shadow: 0 30px 60px -25px rgba(20,22,28,0.28);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg: #131418;
+      --surface: #1B1D22;
+      --surface-2: #22242B;
+      --text: #EDEEF0;
+      --text-muted: #9A9DA9;
+      --accent: #9184FF;
+      --accent-ink: #14161C;
+      --border: #2B2E36;
+      --mono-bg: #0D0E11;
+      --mono-text: #DAD7CE;
+      --mono-text-dim: #75798A;
+      --green: #7CB697;
+      --shadow: 0 30px 70px -25px rgba(0,0,0,0.6);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg: #131418;
+    --surface: #1B1D22;
+    --surface-2: #22242B;
+    --text: #EDEEF0;
+    --text-muted: #9A9DA9;
+    --accent: #9184FF;
+    --accent-ink: #14161C;
+    --border: #2B2E36;
+    --mono-bg: #0D0E11;
+    --mono-text: #DAD7CE;
+    --mono-text-dim: #75798A;
+    --green: #7CB697;
+    --shadow: 0 30px 70px -25px rgba(0,0,0,0.6);
+  }
+
+  *{box-sizing:border-box;}
+  html{ background:var(--bg); }
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'IBM Plex Sans', system-ui, sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding-left:max(20px, env(safe-area-inset-left, 0px));
+    padding-right:max(20px, env(safe-area-inset-right, 0px));
+  }
+  h1,h2,h3{
+    font-family:'IBM Plex Serif', Georgia, serif;
+    font-weight:600;
+    line-height:1.08;
+    text-wrap:balance;
+    margin:0;
+  }
+  p{ line-height:1.65; margin:0; }
+  code, .mono{ font-family:'IBM Plex Mono', ui-monospace, monospace; }
+  a{ color:inherit; }
+  img{ max-width:100%; display:block; }
+
+  .wrap{ max-width:1080px; margin:0 auto; }
+  .gutter{ padding-left:0; padding-right:0; }
+
+  /* ---------- nav ---------- */
+  nav{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:28px 0 0;
+  }
+  .brand{ display:flex; align-items:center; gap:10px; font-weight:600; font-size:17px; letter-spacing:-0.01em; }
+  .brand img{ width:26px; height:26px; border-radius:7px; }
+  .navlinks{ display:flex; align-items:center; gap:28px; font-size:14px; color:var(--text-muted); }
+  .navlinks a{ text-decoration:none; }
+  .navlinks a:hover{ color:var(--text); }
+  .btn{
+    display:inline-flex; align-items:center; gap:8px;
+    background:var(--accent); color:var(--accent-ink);
+    padding:10px 18px; border-radius:9px; font-weight:600; font-size:14px;
+    text-decoration:none; white-space:nowrap;
+  }
+  .btn.ghost{
+    background:transparent; color:var(--text); border:1px solid var(--border);
+  }
+
+  /* ---------- hero ---------- */
+  header.hero{ padding:76px 0 0; }
+  .eyebrow{
+    font-family:'IBM Plex Mono', monospace; font-size:12.5px; color:var(--accent);
+    text-transform:uppercase; letter-spacing:0.10em; margin-bottom:18px; display:block;
+  }
+  h1.headline{ font-size:clamp(38px, 6vw, 66px); max-width:14ch; }
+  .sub{
+    font-size:19px; color:var(--text-muted); max-width:46ch; margin-top:20px;
+  }
+  .hero-actions{ display:flex; flex-wrap:wrap; gap:14px; margin-top:32px; align-items:center; }
+
+  .window{
+    margin-top:56px; border-radius:14px; overflow:hidden;
+    background:var(--surface); border:1px solid var(--border); box-shadow:var(--shadow);
+  }
+  .titlebar{
+    display:flex; align-items:center; gap:8px;
+    padding:12px 14px; background:var(--surface-2); border-bottom:1px solid var(--border);
+  }
+  .dot{ width:11px; height:11px; border-radius:50%; }
+  .dot.r{ background:#EE6A5F; } .dot.y{ background:#F5BD4F; } .dot.g{ background:#61C454; }
+  .titlebar .fname{
+    margin:0 auto; transform:translateX(-16px);
+    font-family:'IBM Plex Mono', monospace; font-size:12.5px; color:var(--text-muted);
+  }
+  .window img{ display:block; width:100%; }
+
+  /* ---------- section shell ---------- */
+  section{ padding:120px 0; }
+  section.tight{ padding:80px 0; }
+  .kicker{
+    font-family:'IBM Plex Mono', monospace; font-size:12.5px; color:var(--text-muted);
+    text-transform:uppercase; letter-spacing:0.10em; display:block; margin-bottom:14px;
+  }
+  h2.sectitle{ font-size:clamp(28px, 3.4vw, 40px); max-width:20ch; }
+  .lede{ font-size:17px; color:var(--text-muted); max-width:56ch; margin-top:16px; }
+
+  /* ---------- feature row (editorial alternating) ---------- */
+  .row{
+    display:grid; grid-template-columns:1fr 1fr; gap:56px; align-items:center;
+    margin-top:64px;
+  }
+  .row.rev .copy{ order:2; }
+  .row.rev .shot{ order:1; }
+  .row .copy h3{ font-size:26px; }
+  .row .copy p{ color:var(--text-muted); margin-top:14px; font-size:15.5px; }
+  .row .shot{
+    border-radius:12px; overflow:hidden; border:1px solid var(--border);
+    background:var(--surface); box-shadow:var(--shadow);
+  }
+  .row .shot img{ width:100%; display:block; }
+  .taglist{ margin-top:20px; display:flex; flex-direction:column; gap:9px; }
+  .tagitem{ display:flex; gap:10px; align-items:flex-start; font-size:14.5px; color:var(--text-muted); }
+  .tagitem .box{
+    flex:none; width:16px; height:16px; border-radius:4px; margin-top:2px;
+    background:var(--accent); color:var(--accent-ink);
+    display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700;
+  }
+
+  /* ---------- checklist feature grid ---------- */
+  .checklist{
+    margin-top:56px; border:1px solid var(--border); border-radius:14px;
+    background:var(--surface); overflow:hidden;
+  }
+  .checkrow{
+    display:grid; grid-template-columns:28px 1fr; gap:16px;
+    padding:22px 26px; border-bottom:1px solid var(--border);
+  }
+  .checkrow:last-child{ border-bottom:none; }
+  .check{
+    width:20px; height:20px; border-radius:5px; margin-top:2px;
+    background:var(--accent); display:flex; align-items:center; justify-content:center;
+  }
+  .check svg{ width:12px; height:12px; }
+  .checkrow h4{
+    margin:0 0 4px; font-size:16px; font-weight:600; font-family:'IBM Plex Sans',sans-serif;
+  }
+  .checkrow p{ color:var(--text-muted); font-size:14.5px; }
+
+  /* ---------- markdown proof section ---------- */
+  .proof{
+    margin-top:56px; display:grid; grid-template-columns:1.1fr 1fr; gap:0;
+    border:1px solid var(--border); border-radius:14px; overflow:hidden; box-shadow:var(--shadow);
+  }
+  .proof .code{
+    background:var(--mono-bg); color:var(--mono-text); padding:28px 26px;
+    font-family:'IBM Plex Mono', monospace; font-size:13px; line-height:1.85;
+    white-space:pre; overflow-x:auto;
+  }
+  .proof .code .h{ color:#8AA9FF; }
+  .proof .code .x{ color:var(--green); }
+  .proof .code .n{ color:var(--mono-text-dim); font-style:italic; }
+  .proof .shotwrap{ background:var(--surface); }
+  .proof .shotwrap img{ width:100%; height:100%; object-fit:cover; }
+
+  /* ---------- install ---------- */
+  .install-card{
+    margin-top:56px; border-radius:16px; background:var(--mono-bg); color:var(--mono-text);
+    padding:40px; box-shadow:var(--shadow);
+  }
+  .install-card .line{
+    font-family:'IBM Plex Mono', monospace; font-size:14.5px; padding:10px 0;
+    border-bottom:1px solid rgba(255,255,255,0.08); display:flex; gap:12px;
+  }
+  .install-card .line:last-child{ border-bottom:none; }
+  .install-card .prompt{ color:var(--mono-text-dim); }
+  .install-card .cmt{ color:var(--mono-text-dim); }
+
+  /* ---------- footer ---------- */
+  footer{ padding:60px 0 90px; border-top:1px solid var(--border); }
+  .footrow{ display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; }
+  footer .fbrand{ display:flex; align-items:center; gap:10px; font-weight:600; }
+  footer .fbrand img{ width:22px; height:22px; border-radius:6px; }
+  footer .flinks{ display:flex; gap:24px; font-size:14px; color:var(--text-muted); }
+  footer .flinks a{ text-decoration:none; }
+  footer .flinks a:hover{ color:var(--text); }
+  .fnote{ margin-top:28px; font-size:13px; color:var(--text-muted); max-width:60ch; }
+
+  @media (max-width:760px){
+    .row{ grid-template-columns:1fr; gap:28px; }
+    .row.rev .copy{ order:1; } .row.rev .shot{ order:2; }
+    .proof{ grid-template-columns:1fr; }
+    .navlinks{ display:none; }
+    section{ padding:76px 0; }
+    header.hero{ padding:48px 0 0; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <div class="brand"><img src="icon.png" alt=""> Listo</div>
+    <div class="navlinks">
+      <a href="#how">How it works</a>
+      <a href="#markdown">Plain text</a>
+      <a href="#install">Install</a>
+    </div>
+    <a class="btn ghost" href="https://github.com/sergiorivas/listo">GitHub ↗</a>
+  </nav>
+
+  <header class="hero">
+    <span class="eyebrow">for macOS</span>
+    <h1 class="headline">A to‑do list that's just a text file.</h1>
+    <p class="sub">Kanban board. Outline view. Or open the raw Markdown and type. Listo keeps all three in sync — no database, no account, no lock‑in. Just a <code>.md</code> file, wherever you keep it.</p>
+    <div class="hero-actions">
+      <a class="btn" href="#install">Get Listo — it's free</a>
+    </div>
+
+    <div class="window">
+      <div class="titlebar">
+        <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        <span class="fname">Demo.md</span>
+      </div>
+      <img src="screenshots/kanban.png" alt="Listo's Kanban board, showing To Do, In Progress and Done columns with tasks, subtasks, and a note.">
+    </div>
+  </header>
+
+  <section id="how">
+    <span class="kicker">How it works</span>
+    <h2 class="sectitle">One file, three ways to look at it.</h2>
+    <p class="lede">Switch views without switching files. Every checkbox, subtask and note is the same underlying Markdown — Listo just renders it differently depending on how you want to work right now.</p>
+
+    <div class="row">
+      <div class="copy">
+        <h3>Kanban, for moving work along</h3>
+        <p>Sections become columns. Drag a card, check it off, collapse a column you're not looking at. Each heading in the file — <code># To Do</code>, <code># In Progress</code> — is a column here, nothing more configured.</p>
+        <div class="taglist">
+          <div class="tagitem"><span class="box">✓</span> Resizable, collapsible columns</div>
+          <div class="tagitem"><span class="box">✓</span> Subtasks nest one level under a task</div>
+          <div class="tagitem"><span class="box">✓</span> Notes preview right on the card</div>
+        </div>
+      </div>
+      <div class="shot"><img src="screenshots/kanban.png" alt="Kanban board view"></div>
+    </div>
+
+    <div class="row rev">
+      <div class="copy">
+        <h3>Outline, for reading it top to bottom</h3>
+        <p>The same sections and tasks, laid out as one scrollable document with real typographic hierarchy — closer to how the file actually reads. Good for reviewing everything at once, or on a smaller window.</p>
+        <div class="taglist">
+          <div class="tagitem"><span class="box">✓</span> Full note text shown inline, no click needed</div>
+          <div class="tagitem"><span class="box">✓</span> Same keyboard shortcuts as Kanban</div>
+          <div class="tagitem"><span class="box">✓</span> Rename a section right from its heading</div>
+        </div>
+      </div>
+      <div class="shot"><img src="screenshots/outline.png" alt="Outline view"></div>
+    </div>
+
+    <div class="row">
+      <div class="copy">
+        <h3>Things‑style keyboard control</h3>
+        <p>Select a row, then <code>⇥</code> / <code>⇧⇥</code> to indent or outdent, arrow keys to move, right‑click for the rest — rename, move to another column, edit its note, delete. Nothing here requires reaching for the mouse.</p>
+        <div class="taglist">
+          <div class="tagitem"><span class="box">✓</span> Selection follows you between views</div>
+          <div class="tagitem"><span class="box">✓</span> Context menu on every row</div>
+          <div class="tagitem"><span class="box">✓</span> A task may carry a note; a subtask stays simple</div>
+        </div>
+      </div>
+      <div class="shot"><img src="screenshots/contextmenu.png" alt="Right-click context menu with Edit note, Indent, Move to, and Delete"></div>
+    </div>
+  </section>
+
+  <section id="markdown" class="tight">
+    <span class="kicker">No proprietary format</span>
+    <h2 class="sectitle">It's just Markdown. Really.</h2>
+    <p class="lede">Every list Listo shows you is a plain <code>.md</code> file on disk — the same one you could open in TextEdit, sync with iCloud or Dropbox, or edit from any other machine. Nothing about it is Listo‑only.</p>
+
+    <div class="proof">
+      <div class="code"><span class="n"># To Do</span>
+
+<span class="h">##</span> not required — a task is a checkbox line
+- [ ] Design the onboarding flow
+  - [ ] Sketch the welcome screen
+  - [ ] Write the empty-state copy
+
+<span class="n"># In Progress</span>
+
+- [ ] Rebuild the settings panel
+  <span class="n">Note: Keep the API key field last — most</span>
+  <span class="n">people skip it on first run, and it</span>
+  <span class="n">shouldn't block getting started.</span>
+
+<span class="n"># Done</span>
+
+<span class="x">- [x]</span> Ship dark mode
+<span class="x">- [x]</span> Fix crash on empty file open</div>
+      <div class="shotwrap"><img src="screenshots/free.png" alt="Free Mode: the raw Markdown file, syntax highlighted"></div>
+    </div>
+    <p class="lede" style="margin-top:24px;">Prefer to type directly? <strong>Free Mode</strong> gives you the raw text with syntax highlighting — no watcher fighting your edits, no auto‑formatting while you type. Listo only re‑reads the file when you save, so pasting or typing fast never gets reverted out from under you.</p>
+  </section>
+
+  <section class="tight">
+    <span class="kicker">Built for how a list actually gets used</span>
+    <h2 class="sectitle">Small, deliberate scope.</h2>
+    <div class="checklist">
+      <div class="checkrow">
+        <div class="check"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-6" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div><h4>Two levels, on purpose</h4><p>A task can carry one note and a set of subtasks. Subtasks stay simple — no infinite nesting to get lost in.</p></div>
+      </div>
+      <div class="checkrow">
+        <div class="check"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-6" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div><h4>Local files, no account</h4><p>Listo opens and saves ordinary files. Put them in iCloud Drive, a git repo, or nowhere special — it doesn't care.</p></div>
+      </div>
+      <div class="checkrow">
+        <div class="check"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-6" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div><h4>An LLM only if you bring one</h4><p>Edit Free Mode text in a way that's genuinely ambiguous, and Listo can ask an LLM to reconcile it — using your own API key. Skip Settings entirely and it just logs the change as unresolved.</p></div>
+      </div>
+      <div class="checkrow">
+        <div class="check"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-6" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div><h4>Native, not wrapped</h4><p>A real SwiftUI app — window tabs, Open Recent, ⌘+/⌘− for font size, light and dark mode, in English or Spanish.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="install" class="tight">
+    <span class="kicker">Install</span>
+    <h2 class="sectitle">Three commands, via Homebrew.</h2>
+    <p class="lede">Listo ships as a signed, ad‑hoc build distributed through a Homebrew cask — no App Store, no notarization fee passed on to you.</p>
+    <div class="install-card">
+      <div class="line"><span class="prompt">$</span> brew tap sergiorivas/tap</div>
+      <div class="line"><span class="prompt">$</span> brew trust --cask sergiorivas/tap/listo <span class="cmt">// it's a third-party tap</span></div>
+      <div class="line"><span class="prompt">$</span> brew install --cask listo</div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="footrow">
+      <div class="fbrand"><img src="icon.png" alt=""> Listo</div>
+      <div class="flinks">
+        <a href="https://github.com/sergiorivas/listo">GitHub</a>
+        <a href="https://github.com/sergiorivas/listo#readme">Documentation</a>
+        <a href="https://github.com/sergiorivas/listo/releases">Releases</a>
+      </div>
+    </div>
+    <p class="fnote">Listo is a small, independent macOS app. Not notarized by Apple — see the README for why, and how to open it the first time.</p>
+  </footer>
+</div>
+</body>
+</html>
