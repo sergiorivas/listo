@@ -23,6 +23,16 @@ final class DifferTests: XCTestCase {
         XCTAssertEqual(events[0].text, "Task B")
     }
 
+    func testSubtaskEventsLogParentContext() {
+        let old = "# ahora\n- [ ] Parent\n  - [ ] Child\n"
+        let new = "# ahora\n- [ ] Parent\n  - [x] Child\n"
+        let outcome = ListoDiffer.diff(fileName: "f.md", oldText: old, newText: new)
+        guard case .resolved(let events) = outcome else { return XCTFail("expected resolved") }
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(events[0].event, .completed)
+        XCTAssertEqual(events[0].text, "Parent > Child")
+    }
+
     func testSingleDeletionIsResolved() {
         let old = "# ahora\n- [ ] Task A\n- [ ] Task B\n"
         let new = "# ahora\n- [ ] Task A\n"

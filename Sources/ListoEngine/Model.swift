@@ -162,6 +162,22 @@ public struct ListoDocument {
         return depth
     }
 
+    /// How `task` is named in the log: its own text for a top-level task, or
+    /// `<task> > <subtask>` (every ancestor, outermost first) for a subtask,
+    /// so a log line about a subtask carries the context of what it belongs
+    /// to. `text` overrides the task's own text (a rename logs the new one),
+    /// and `parent` overrides the lookup for actions that change the task's
+    /// parent (indent/outdent), where the caller knows which one to show.
+    public func logText(for task: ListoTask, text: String? = nil, parent: ListoTask?? = nil) -> String {
+        var names = [text ?? task.text]
+        var current: ListoTask? = parent ?? location(of: task)?.parent
+        while let ancestor = current {
+            names.insert(ancestor.text, at: 0)
+            current = location(of: ancestor)?.parent
+        }
+        return names.joined(separator: " > ")
+    }
+
     public var allSectionsRecursive: [ListoSection] {
         func flatten(_ nodes: [ListoSection]) -> [ListoSection] {
             nodes.flatMap { [$0] + flatten($0.subsections) }

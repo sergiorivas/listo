@@ -161,6 +161,18 @@ edited. This stays purely in-memory (spec §09: never written to the file).
   `Scripts/publish_cask.sh`. If a Developer ID is ever set up, this is
   the path to swap for a signed/notarized one.
 
+## Subtask log text
+
+- **Log text carries the parent.** Any logged action on a subtask writes
+  `text` as `<task> > <subtask>` (`ListoDocument.logText(for:)`, also used by
+  `ListoDiffer` for Free Mode), so a log line like `completed: "Buy milk"`
+  doesn't lose *which* task's "Buy milk" it was. Top-level tasks log plain
+  text, as before. Indent/outdent (`reindented`) log under whichever parent
+  is involved — the new one on indent, the one it just left on outdent — so
+  the line always names the relationship. The LLM interpretation prompt asks
+  for the same format. The wire schema is unchanged; it's just the `text`
+  value.
+
 ## Things-style row selection
 
 `DocumentController.selectedTaskID` (shared between Kanban and Outline, so

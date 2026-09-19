@@ -97,6 +97,7 @@ public final class ListoEditor {
         let (indent, rest) = splitIndent(lines[line])
         let newState: TaskState = task.state == .done ? .open : .done
         let box = newState == .done ? "[x]" : "[ ]"
+        let logText = document.logText(for: task)
         let sectionPath = (document.location(of: task)?.section).map { document.path(to: $0) ?? [$0.title] }
         lines[line] = indent + "- \(box) " + task.text
         _ = rest
@@ -107,7 +108,7 @@ public final class ListoEditor {
             event: newState == .done ? .completed : .reopened,
             taskID: task.shortID,
             sectionPath: sectionPath.map { .path($0) },
-            text: task.text,
+            text: logText,
             source: .app,
             interpretedBy: .userAction
         )
@@ -121,6 +122,7 @@ public final class ListoEditor {
         let (indent, _) = splitIndent(lines[line])
         let box = task.state == .done ? "[x]" : "[ ]"
         let sectionPath = (document.location(of: task)?.section).map { document.path(to: $0) ?? [$0.title] }
+        let logText = document.logText(for: task, text: newText)
         lines[line] = indent + "- \(box) " + newText
         try commit(trackingLine: line)
 
@@ -129,7 +131,7 @@ public final class ListoEditor {
             event: .edited,
             taskID: task.shortID,
             sectionPath: sectionPath.map { .path($0) },
-            text: newText,
+            text: logText,
             source: .app,
             interpretedBy: .userAction
         )
@@ -214,12 +216,13 @@ public final class ListoEditor {
         try commit(trackingLine: insertionIndex)
 
         let sectionPath = document.path(to: refetch(section)) ?? [section.title]
+        let created = taskAt(line: insertionIndex)
         let event = LogEvent(
             file: fileURL.lastPathComponent,
             event: .created,
-            taskID: taskAt(line: insertionIndex)?.shortID ?? "t_????",
+            taskID: created?.shortID ?? "t_????",
             sectionPath: .path(sectionPath),
-            text: text,
+            text: created.map { document.logText(for: $0) } ?? text,
             source: .app,
             interpretedBy: .userAction
         )
@@ -248,6 +251,8 @@ public final class ListoEditor {
             throw ListoEditorError.noPrecedingSibling
         }
         let precedingSibling = siblings[taskIndex - 1]
+        // Logged under its new parent — the relationship the action created.
+        let logText = document.logText(for: task, parent: .some(precedingSibling))
 
         let sourceRange = fullRange(of: task)
         var block = Array(lines[sourceRange])
@@ -266,7 +271,7 @@ public final class ListoEditor {
             event: .reindented,
             taskID: task.shortID,
             sectionPath: .path(document.path(to: refetch(section)) ?? [section.title]),
-            text: task.text,
+            text: logText,
             source: .app,
             interpretedBy: .userAction
         )
@@ -288,6 +293,9 @@ public final class ListoEditor {
         guard let (section, parent) = document.location(of: task), let parentTask = parent else {
             throw ListoEditorError.alreadyTopLevel
         }
+        // Logged under the parent it just left, so the line says what it was
+        // taken out of.
+        let logText = document.logText(for: task)
 
         let sourceRange = fullRange(of: task)
         var block = Array(lines[sourceRange])
@@ -310,7 +318,7 @@ public final class ListoEditor {
             event: .reindented,
             taskID: task.shortID,
             sectionPath: .path(document.path(to: refetch(section)) ?? [section.title]),
-            text: task.text,
+            text: logText,
             source: .app,
             interpretedBy: .userAction
         )
@@ -361,6 +369,7 @@ public final class ListoEditor {
         guard let task = findTask(taskID) else { throw ListoEditorError.taskNotFound }
         let section = document.location(of: task)?.section
         let path = section.map { document.path(to: $0) ?? [$0.title] }
+        let logText = document.logText(for: task)
 
         let range = fullRange(of: task)
         lines.removeSubrange(range)
@@ -371,7 +380,7 @@ public final class ListoEditor {
             event: .deleted,
             taskID: task.shortID,
             sectionPath: path.map { .path($0) },
-            text: task.text,
+            text: logText,
             source: .app,
             interpretedBy: .userAction
         )

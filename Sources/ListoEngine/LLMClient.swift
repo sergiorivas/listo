@@ -46,6 +46,9 @@ private enum LLMPrompts {
          "text": "the task's current text",
          "section_path": ["section", "subsection"] | null}
 
+        For a subtask (a task indented under another), write "text" as \
+        "<parent task> > <subtask>" so the log keeps its context.
+
         Distinguish an "edited" task from a "deleted" one plus a new \
         "created" one by comparing the text: if the text is the same or \
         very similar in both versions, it's the same task, edited.

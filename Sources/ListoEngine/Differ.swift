@@ -24,6 +24,9 @@ public enum ListoDiffer {
         let sectionPath: [String]
         let parentText: String?
         var normalizedText: String { task.text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+        /// `<task> > <subtask>` for a subtask, so its log lines keep the
+        /// context of what it belongs to (see `ListoDocument.logText`).
+        var logText: String { parentText.map { "\($0) > \(task.text)" } ?? task.text }
     }
 
     public static func diff(fileName: String, oldText: String, newText: String) -> DiffOutcome {
@@ -77,7 +80,7 @@ public enum ListoDiffer {
             if !exact {
                 events.append(LogEvent(
                     file: fileName, event: .edited, taskID: new.task.shortID,
-                    sectionPath: .path(new.sectionPath), text: new.task.text,
+                    sectionPath: .path(new.sectionPath), text: new.logText,
                     source: .freeEdit, interpretedBy: .heuristic
                 ))
             }
@@ -86,21 +89,22 @@ public enum ListoDiffer {
                     file: fileName,
                     event: new.task.state == .done ? .completed : .reopened,
                     taskID: new.task.shortID, sectionPath: .path(new.sectionPath),
-                    text: new.task.text, source: .freeEdit, interpretedBy: .heuristic
+                    text: new.logText, source: .freeEdit, interpretedBy: .heuristic
                 ))
             }
             if old.sectionPath != new.sectionPath {
                 events.append(LogEvent(
                     file: fileName, event: .movedSection, taskID: new.task.shortID,
                     sectionPath: .move(from: old.sectionPath, to: new.sectionPath),
-                    text: new.task.text, source: .freeEdit, interpretedBy: .heuristic
+                    text: new.logText, source: .freeEdit, interpretedBy: .heuristic
                 ))
                 structuralChanges += 1
             }
             if (old.parentText != nil) != (new.parentText != nil) {
                 events.append(LogEvent(
                     file: fileName, event: .reindented, taskID: new.task.shortID,
-                    sectionPath: .path(new.sectionPath), text: new.task.text,
+                    sectionPath: .path(new.sectionPath),
+                    text: (new.parentText != nil ? new : old).logText,
                     source: .freeEdit, interpretedBy: .heuristic
                 ))
                 structuralChanges += 1
@@ -108,7 +112,7 @@ public enum ListoDiffer {
             if old.task.note != new.task.note {
                 events.append(LogEvent(
                     file: fileName, event: .noteUpdated, taskID: new.task.shortID,
-                    sectionPath: .path(new.sectionPath), text: new.task.text,
+                    sectionPath: .path(new.sectionPath), text: new.logText,
                     source: .freeEdit, interpretedBy: .heuristic
                 ))
             }
@@ -118,7 +122,7 @@ public enum ListoDiffer {
             let old = oldFlat[oi]
             events.append(LogEvent(
                 file: fileName, event: .deleted, taskID: old.task.shortID,
-                sectionPath: .path(old.sectionPath), text: old.task.text,
+                sectionPath: .path(old.sectionPath), text: old.logText,
                 source: .freeEdit, interpretedBy: .heuristic
             ))
             structuralChanges += 1
@@ -127,7 +131,7 @@ public enum ListoDiffer {
             let new = newFlat[ni]
             events.append(LogEvent(
                 file: fileName, event: .created, taskID: new.task.shortID,
-                sectionPath: .path(new.sectionPath), text: new.task.text,
+                sectionPath: .path(new.sectionPath), text: new.logText,
                 source: .freeEdit, interpretedBy: .heuristic
             ))
             structuralChanges += 1

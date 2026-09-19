@@ -255,6 +255,41 @@ final class EditorTests: XCTestCase {
         XCTAssertEqual(editor.document.sections[0].tasks.map(\.text), ["Keep"])
     }
 
+    // MARK: - Subtask log text ("<task> > <subtask>")
+
+    func testTopLevelTaskLogsPlainText() throws {
+        let editor = makeEditor("# ahora\n- [ ] Parent\n  - [ ] Child\n")
+        let event = try editor.toggle(taskID: editor.document.sections[0].tasks[0].id)
+        XCTAssertEqual(event.text, "Parent")
+    }
+
+    func testSubtaskActionsLogParentContext() throws {
+        let editor = makeEditor("# ahora\n- [ ] Parent\n  - [ ] Child\n")
+        func child() -> ListoTask { editor.document.sections[0].tasks[0].subtasks[0] }
+
+        XCTAssertEqual(try editor.toggle(taskID: child().id).text, "Parent > Child")
+        XCTAssertEqual(try editor.toggle(taskID: child().id).text, "Parent > Child")
+        XCTAssertEqual(try editor.renameTask(taskID: child().id, newText: "Kid").text, "Parent > Kid")
+        XCTAssertEqual(try editor.deleteTask(taskID: child().id).text, "Parent > Kid")
+    }
+
+    func testInsertedSubtaskSiblingLogsParentContext() throws {
+        let editor = makeEditor("# ahora\n- [ ] Parent\n  - [ ] Sub A\n")
+        let subAID = editor.document.sections[0].tasks[0].subtasks[0].id
+        let event = try editor.insertTaskAfter(taskID: subAID, text: "Sub B")
+        XCTAssertEqual(event.text, "Parent > Sub B")
+    }
+
+    func testIndentAndOutdentLogTheParentInvolved() throws {
+        let editor = makeEditor("# ahora\n- [ ] First\n- [ ] Second\n")
+        let indented = try editor.indentTask(taskID: editor.document.sections[0].tasks[1].id)
+        XCTAssertEqual(indented.text, "First > Second")
+
+        let nestedID = editor.document.sections[0].tasks[0].subtasks[0].id
+        let outdented = try editor.outdentTask(taskID: nestedID)
+        XCTAssertEqual(outdented.text, "First > Second")
+    }
+
     func testEachActionAppendsToLogFile() throws {
         let editor = makeEditor("# ahora\n- [ ] Task A\n")
         let taskID = editor.document.sections[0].tasks[0].id
