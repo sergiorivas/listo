@@ -315,23 +315,55 @@ final class DocumentController: ObservableObject {
     /// just the selection itself — mirrors how Return/Tab already keep you
     /// typing across the task they create or re-indent.
     func selectAdjacent(direction: Int, keepEditing: Bool) {
-        guard let currentID = selectedTaskID else { return }
+        guard let currentID = selectedTaskID,
+              let newID = adjacentTaskID(to: currentID, direction: direction) else { return }
+        selectedTaskID = newID
+        if keepEditing { editingTaskID = newID }
+    }
+
+    /// The task next to `taskID` in the current view style's navigation
+    /// order (see `selectAdjacent`), or `nil` past either end.
+    private func adjacentTaskID(to taskID: UUID, direction: Int) -> UUID? {
         let orderedIDs: [UUID]
         switch viewStyle {
         case .outline:
             orderedIDs = document.allTasksRecursive.map(\.id)
         case .kanban:
             guard let column = document.sections.first(where: { section in
-                section.allTasksRecursive.contains { $0.id == currentID }
-            }) else { return }
+                section.allTasksRecursive.contains { $0.id == taskID }
+            }) else { return nil }
             orderedIDs = column.allTasksRecursive.map(\.id)
         }
-        guard let idx = orderedIDs.firstIndex(of: currentID) else { return }
+        guard let idx = orderedIDs.firstIndex(of: taskID) else { return nil }
         let newIdx = idx + direction
-        guard orderedIDs.indices.contains(newIdx) else { return }
-        let newID = orderedIDs[newIdx]
-        selectedTaskID = newID
-        if keepEditing { editingTaskID = newID }
+        return orderedIDs.indices.contains(newIdx) ? orderedIDs[newIdx] : nil
+    }
+
+    /// Delete/Backspace on a task or subtask whose title is empty removes it
+    /// — the caller has already checked the title (the live field while
+    /// editing, the task's own text when merely selected). Selection (and
+    /// edit focus, if `keepEditing`) moves to the task before it — or the
+    /// one after, if it was first — so a run of Backspaces keeps working
+    /// through a list the way Return keeps adding to one.
+    ///
+    /// Refuses (returns `false`) when the task still carries a note or
+    /// subtasks: `deleteTask` removes the whole block, so an empty title
+    /// isn't enough evidence the user means to drop that content too.
+    @discardableResult
+    func deleteEmpty(taskID: UUID, keepEditing: Bool) -> Bool {
+        guard let task = document.allTasksRecursive.first(where: { $0.id == taskID }),
+              task.subtasks.isEmpty,
+              task.note == nil
+        else { return false }
+        let neighborID = adjacentTaskID(to: taskID, direction: -1) ?? adjacentTaskID(to: taskID, direction: 1)
+        guard perform({ try $0.deleteTask(taskID: taskID) }) else { return false }
+        // Ids are content-derived, so a *following* neighbor can be re-id'd
+        // by the delete (e.g. two blank tasks in a row) — only follow the
+        // neighbor if it still resolves.
+        let target = neighborID.flatMap { id in document.allTasksRecursive.contains { $0.id == id } ? id : nil }
+        editingTaskID = keepEditing ? target : nil
+        selectedTaskID = target
+        return true
     }
 
     func deleteSection(sectionID: UUID) {

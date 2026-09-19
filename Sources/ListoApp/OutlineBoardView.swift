@@ -288,9 +288,19 @@ private struct OutlineTaskNode: View {
             // AppKit focus, so this never reliably fired for those; the
             // Task menu (ListoApp.swift's `TaskCommands`, via
             // `@FocusedValue`) is the real, verified mechanism now.
-            guard isRowFocused, !isEditing, press.key == .return else { return .ignored }
-            beginEditing()
-            return .handled
+            guard isRowFocused, !isEditing else { return .ignored }
+            switch press.key {
+            case .return:
+                beginEditing()
+                return .handled
+            case .delete, .deleteForward:
+                // A blank task/subtask (nothing typed yet) goes away on
+                // Delete, same as while editing it below.
+                guard press.phase == .down, task.text.isEmpty else { return .ignored }
+                return controller.deleteEmpty(taskID: task.id, keepEditing: false) ? .handled : .ignored
+            default:
+                return .ignored
+            }
         }
         .onAppear { text = task.text }
         // Not just `.onAppear`: two sibling tasks with the same text (most
@@ -403,6 +413,13 @@ private struct OutlineTaskNode: View {
                         // matches it at all.
                         handleTab(outdent: true)
                         return .handled
+                    case .delete, .deleteForward:
+                        // Only on an already-empty field — otherwise Delete
+                        // edits the text as usual. Fresh presses only, so
+                        // holding Backspace to clear a title doesn't carry
+                        // on through and delete the task too.
+                        guard text.isEmpty, press.phase == .down else { return .ignored }
+                        return controller.deleteEmpty(taskID: task.id, keepEditing: true) ? .handled : .ignored
                     case .upArrow:
                         handleVerticalNav(direction: -1)
                         return .handled

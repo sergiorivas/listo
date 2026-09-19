@@ -161,7 +161,7 @@ edited. This stays purely in-memory (spec §09: never written to the file).
   `Scripts/publish_cask.sh`. If a Developer ID is ever set up, this is
   the path to swap for a signed/notarized one.
 
-## Subtask log text
+## Subtask log text and Delete-on-empty
 
 - **Log text carries the parent.** Any logged action on a subtask writes
   `text` as `<task> > <subtask>` (`ListoDocument.logText(for:)`, also used by
@@ -172,6 +172,15 @@ edited. This stays purely in-memory (spec §09: never written to the file).
   the line always names the relationship. The LLM interpretation prompt asks
   for the same format. The wire schema is unchanged; it's just the `text`
   value.
+- **Delete/Backspace on an empty task or subtask deletes it**, in both
+  Kanban and Outline, whether the row is being edited (empty field) or
+  merely selected (empty title) — `DocumentController.deleteEmpty`. Focus
+  moves to the previous task (or the next, if it was first) and stays in
+  edit mode if it was editing. Two guards: it ignores key *repeats* (holding
+  Backspace to clear a title must not carry on and delete the task), and it
+  refuses when the task has a note or subtasks (`deleteTask` removes the
+  whole block, and an empty title isn't evidence the user wants that
+  content gone).
 
 ## Things-style row selection
 
