@@ -100,6 +100,9 @@ enum LocalizationTable {
             "es": "Pensado para la primera columna (Hoy, Enfoque, …) y la última (Hecho, …), independientemente de cómo se llamen — se aplican por posición, no por nombre.",
             "en": "Meant for the first column (Today, Focus, …) and the last (Done, …), whatever they're actually named — these apply by position, not by title.",
         ],
+        "settings.completionSound": [
+            "es": "Sonido al completar una tarea", "en": "Play a sound when completing a task",
+        ],
         "settings.doneMoveDelay": [
             "es": "Mover a Hecho después de", "en": "Move to Done after",
         ],

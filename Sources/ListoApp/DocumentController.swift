@@ -201,7 +201,23 @@ final class DocumentController: ObservableObject {
 
     func toggle(taskID: UUID) {
         guard perform({ try $0.toggle(taskID: taskID) }) else { return }
+        playCompletionSoundIfNeeded(forTaskID: taskID)
         scheduleDoneMoveIfNeeded(forTaskID: taskID)
+    }
+
+    /// Plays `AppSettings.completionSoundEnabled`'s sound when the toggle
+    /// just checked the task off (not when it reopened it). Only App Mode
+    /// clicks reach here — a completion inferred from a Free Mode edit is
+    /// not something the user just did, so it stays silent.
+    private func playCompletionSoundIfNeeded(forTaskID taskID: UUID) {
+        guard AppSettings.shared.completionSoundEnabled,
+              document.allTasksRecursive.first(where: { $0.id == taskID })?.state == .done
+        else { return }
+        // Restart rather than let a quick second completion be swallowed by
+        // the still-playing first one (`play()` is a no-op while playing).
+        let sound = NSSound(named: "Glass")
+        sound?.stop()
+        sound?.play()
     }
 
     /// User-requested addition: checking off a top-level task, when the

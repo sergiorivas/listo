@@ -112,6 +112,11 @@ struct SettingsView: View {
             }
 
             Section {
+                Toggle(
+                    L("settings.completionSound", "Sonido al completar una tarea"),
+                    isOn: $settings.completionSoundEnabled
+                )
+
                 LabeledContent(L("settings.doneMoveDelay", "Mover a Hecho después de")) {
                     Stepper(
                         value: $settings.doneMoveDelaySeconds,
