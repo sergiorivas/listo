@@ -21,7 +21,8 @@ way it does, see `CLAUDE.md`.
 
 ```
 Sources/ListoEngine/     UI-independent engine (Swift Package), spec §02/§05/§06
-  Model.swift            File → Section → Task → Subtask tree + note
+  Model.swift            File → Section → Task → Subtask tree + note,
+                          task priority (`!`/`!!`/`!!!`, sorted for display)
                           (two levels: a Task may have a note, a Subtask
                           may not, and can't have subtasks of its own)
   Parser.swift           markdown → tree (2-space/tab indentation rule, §02)
@@ -49,13 +50,14 @@ Sources/ListoApp/        SwiftUI app (macOS executable), ADR-001
   KanbanView.swift        Board view (§04)
   OutlineBoardView.swift  Document view with real typographic hierarchy (§04)
   FreeEditView.swift      Wrapped NSTextView, syntax highlighting (ADR-001)
+  PriorityIndicator.swift Priority badge + the context menu's Priority submenu
   SettingsView.swift      API key (§09) + language, theme, and font size
   LogPanelView.swift      Interpreted history + export (.jsonl or text)
   Localization.swift      AppSettings (language/theme/font size) + L(key, value)
   LocalizationTable.swift es/en translations in code, not a String Catalog
   RecentFilesStore.swift  Remembers opened files; reopens the last one on launch
 
-Tests/ListoEngineTests/  43 tests covering the parser, editor, differ, and log
+Tests/ListoEngineTests/  73 tests covering the parser, editor, differ, and log
 Scripts/version.sh       Derives the version from git tags (no manual input)
 Scripts/build_app.sh     Builds an ad-hoc-signed Listo.app into dist/ — no
                          tests, tagging, or publishing; just a local build

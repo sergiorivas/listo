@@ -76,6 +76,42 @@ scattered at every depth) for no real benefit.
   own — see "Things-style row selection" below for how that structure is
   still used today.
 
+## Priority (`!`, `!!`, `!!!`)
+
+A task or subtask line may end with a priority marker: `- [ ] Pay rent !!!`
+(`!` low, `!!` medium, `!!!` high). It is a *task-line* feature, not a note
+one — subtasks have no notes, and the sort is over tasks.
+
+- **Parsed off the title.** `TaskPriority.split` strips the marker into
+  `ListoTask.priority`; `text` stays clean, so ids (`StableID`), the differ
+  and every view see the plain title, and Kanban/Outline show a `PriorityBadge`
+  (SF Symbol `exclamationmark`/`.2`/`.3`, coloured blue/orange/red) instead of
+  the `!`s. Only Free Mode shows the raw marker (highlighted in
+  `FreeEditView`). It must be the last whitespace-separated token and exactly
+  1–3 `!`: `Call mom!`, `Wow !!!!` and `Hey !! there` stay plain text.
+- **Sorting is display-only.** The file keeps the user's own order;
+  `ListoSection.displayTasks` / `ListoTask.displaySubtasks` are a stable sort
+  by priority (highest first) that the views iterate. Physically reordering
+  the file on every priority change was rejected: Free Mode edits would leave
+  it unsorted anyway, so the views need the display sort regardless, and it
+  would rewrite the user's file order behind their back.
+- **Custom order = order within a priority.** ⌘↑/⌘↓ (`reorderTask`) moves
+  among the *displayed* siblings and only swaps with one of the same
+  priority (otherwise `noSiblingInDirection`, a silent no-op); crossing
+  priorities is what the context menu's Priority submenu is for. Indent uses
+  the sibling above *on screen*, and ↑/↓ navigation follows display order
+  (`allTasksInDisplayOrder`).
+- **Writers must preserve the marker.** `toggle` now edits only the
+  checkbox (keeps the rest of the line verbatim); `renameTask` keeps the
+  existing priority since the edit field shows the clean title — unless the
+  new text itself ends in a marker, which sets it (type `Buy milk !!` into
+  the title field). Line building goes through `ListoSerializer.taskLine`.
+- **Log.** New `priority_changed` event kind. Its `text` is the task text
+  with the new marker appended, or bare if the priority was cleared
+  (`LogFormatter` tells them apart by that trailing token, which a task's
+  own text can never end with). Free Mode changes are detected by the
+  differ; the LLM prompt knows the kind too.
+
 ## Free Mode without a watcher
 
 The FSEvents watcher (active while editing in Free Mode, comparing the file
