@@ -89,6 +89,8 @@ private struct OutlineSection: View {
                 .font(headingFont)
                 .onAppear { titleText = section.title }
 
+                SectionCountBadge(count: section.taskCount)
+
                 SectionAddTaskButton { controller.addTaskAndEdit(toSectionID: section.id) }
                 SectionDeleteButton { controller.deleteSection(sectionID: section.id) }
 

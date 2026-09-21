@@ -189,6 +189,8 @@ private struct KanbanColumn: View {
                 .lineLimit(1)
                 .onAppear { titleText = section.title }
 
+                SectionCountBadge(count: section.taskCount)
+
                 Spacer(minLength: 0)
 
                 SectionAddTaskButton { controller.addTaskAndEdit(toSectionID: section.id) }
@@ -229,9 +231,7 @@ private struct KanbanColumn: View {
 
             Spacer(minLength: 0)
 
-            Text("\(section.allTasksRecursive.count)")
-                .font(settings.font(.caption))
-                .foregroundStyle(.secondary)
+            SectionCountBadge(count: section.taskCount)
         }
         .padding(10)
     }
@@ -291,6 +291,8 @@ private struct KanbanSubgroup: View {
                 .font(settings.font(.caption, weight: .bold))
                 .foregroundStyle(.secondary)
                 .onAppear { titleText = section.title }
+
+                SectionCountBadge(count: section.taskCount)
 
                 Spacer(minLength: 0)
 
