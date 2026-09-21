@@ -91,6 +91,22 @@ private struct TaskCommands: Commands {
             .keyboardShortcut(.delete, modifiers: [])
             .disabled(controller?.selectedTaskID == nil || isEditingSelectedTask)
 
+            Button(L("task.moveUp", "Mover arriba")) {
+                if let controller, let id = controller.selectedTaskID {
+                    controller.reorder(taskID: id, direction: -1)
+                }
+            }
+            .keyboardShortcut(.upArrow, modifiers: .command)
+            .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
+
+            Button(L("task.moveDown", "Mover abajo")) {
+                if let controller, let id = controller.selectedTaskID {
+                    controller.reorder(taskID: id, direction: 1)
+                }
+            }
+            .keyboardShortcut(.downArrow, modifiers: .command)
+            .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
+
             Divider()
 
             Button(L("task.previous", "Tarea anterior")) {

@@ -7,6 +7,7 @@ public enum ListoEditorError: Error, Equatable {
     case maxDepthReached
     case alreadyTopLevel
     case subtaskNoteNotSupported
+    case noSiblingInDirection
 }
 
 /// Implements every "Modo App" action from spec §03. Each method performs a
@@ -31,7 +32,7 @@ public final class ListoEditor {
     /// immediately either way, since it is not the document SwiftUI manages.
     public var autoPersist: Bool
     /// The id of the task most recently touched by `renameTask`,
-    /// `indentTask`, `outdentTask`, `moveTask`, or `insertTaskAfter` — re-
+    /// `indentTask`, `outdentTask`, `reorderTask`, `moveTask`, or `insertTaskAfter` — re-
     /// resolved against `document` *after* that action's reparse. Ids are
     /// content/position derived (`StableID`), so any of those actions gives
     /// the task a new id (for `insertTaskAfter`, the newly created sibling's
@@ -316,6 +317,49 @@ public final class ListoEditor {
         let event = LogEvent(
             file: fileURL.lastPathComponent,
             event: .reindented,
+            taskID: task.shortID,
+            sectionPath: .path(document.path(to: refetch(section)) ?? [section.title]),
+            text: logText,
+            source: .app,
+            interpretedBy: .userAction
+        )
+        return try logWriter.append(event)
+    }
+
+    /// Moves a task (with its note and subtasks) one position up
+    /// (`direction: -1`) or down (`direction: +1`) among its own siblings —
+    /// the ⌘↑/⌘↓ action. A subtask stays inside its parent and a top-level
+    /// task stays inside its section; already first/last throws
+    /// `noSiblingInDirection`.
+    @discardableResult
+    public func reorderTask(taskID: UUID, direction: Int) throws -> LogEvent {
+        guard let task = findTask(taskID) else { throw ListoEditorError.taskNotFound }
+        guard let (section, parent) = document.location(of: task) else {
+            throw ListoEditorError.taskNotFound
+        }
+        let siblings = parent?.subtasks ?? section.tasks
+        guard let taskIndex = siblings.firstIndex(where: { $0.id == task.id }),
+              siblings.indices.contains(taskIndex + direction)
+        else { throw ListoEditorError.noSiblingInDirection }
+        let neighbor = siblings[taskIndex + direction]
+        let logText = document.logText(for: task)
+
+        let sourceRange = fullRange(of: task)
+        let block = Array(lines[sourceRange])
+        lines.removeSubrange(sourceRange)
+
+        // The neighbor is adjacent, so going up it starts where the block
+        // came out of; going down it ends `sourceRange.count` lines earlier
+        // than it used to.
+        let insertionIndex = direction < 0
+            ? fullRange(of: neighbor).lowerBound
+            : fullRange(of: neighbor).upperBound - sourceRange.count
+        lines.insert(contentsOf: block, at: insertionIndex)
+        try commit(trackingLine: insertionIndex)
+
+        let event = LogEvent(
+            file: fileURL.lastPathComponent,
+            event: .reordered,
             taskID: task.shortID,
             sectionPath: .path(document.path(to: refetch(section)) ?? [section.title]),
             text: logText,

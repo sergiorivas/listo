@@ -152,6 +152,47 @@ final class EditorTests: XCTestCase {
         XCTAssertEqual(editor.document.sections[0].tasks[0].subtasks.count, 0)
     }
 
+    func testReorderMovesTaskUpAndDownWithItsBlock() throws {
+        let editor = makeEditor("# ahora\n- [ ] A\n  note A\n  - [ ] A1\n- [ ] B\n- [ ] C\n")
+        let aID = editor.document.sections[0].tasks[0].id
+
+        let down = try editor.reorderTask(taskID: aID, direction: 1)
+        XCTAssertEqual(down.event, .reordered)
+        XCTAssertEqual(editor.document.sections[0].tasks.map(\.text), ["B", "A", "C"])
+        let a = editor.document.sections[0].tasks[1]
+        XCTAssertEqual(a.note, "note A")
+        XCTAssertEqual(a.subtasks.map(\.text), ["A1"])
+        XCTAssertEqual(editor.lastActionTaskID, a.id)
+
+        try editor.reorderTask(taskID: a.id, direction: 1)
+        XCTAssertEqual(editor.document.sections[0].tasks.map(\.text), ["B", "C", "A"])
+
+        let aLast = editor.document.sections[0].tasks[2]
+        try editor.reorderTask(taskID: aLast.id, direction: -1)
+        XCTAssertEqual(editor.document.sections[0].tasks.map(\.text), ["B", "A", "C"])
+        XCTAssertEqual(editor.currentText, "# ahora\n- [ ] B\n- [ ] A\n  note A\n  - [ ] A1\n- [ ] C\n")
+    }
+
+    func testReorderSubtaskStaysInsideItsParent() throws {
+        let editor = makeEditor("# ahora\n- [ ] P\n  - [ ] S1\n  - [ ] S2\n- [ ] Q\n")
+        let s2 = editor.document.sections[0].tasks[0].subtasks[1]
+        try editor.reorderTask(taskID: s2.id, direction: -1)
+        XCTAssertEqual(editor.document.sections[0].tasks[0].subtasks.map(\.text), ["S2", "S1"])
+        XCTAssertEqual(editor.document.sections[0].tasks.map(\.text), ["P", "Q"])
+
+        let s1 = editor.document.sections[0].tasks[0].subtasks[1]
+        XCTAssertThrowsError(try editor.reorderTask(taskID: s1.id, direction: 1)) { error in
+            XCTAssertEqual(error as? ListoEditorError, .noSiblingInDirection)
+        }
+    }
+
+    func testReorderFirstUpAndLastDownThrow() {
+        let editor = makeEditor("# ahora\n- [ ] A\n- [ ] B\n")
+        let tasks = editor.document.sections[0].tasks
+        XCTAssertThrowsError(try editor.reorderTask(taskID: tasks[0].id, direction: -1))
+        XCTAssertThrowsError(try editor.reorderTask(taskID: tasks[1].id, direction: 1))
+    }
+
     func testInsertTaskAfterAddsTopLevelSibling() throws {
         let editor = makeEditor("# ahora\n- [ ] First\n- [ ] Third\n")
         let firstID = editor.document.sections[0].tasks[0].id

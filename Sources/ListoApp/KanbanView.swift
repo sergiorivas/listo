@@ -525,6 +525,16 @@ private struct TaskRow: View {
                 Label(L("task.outdent", "Quitar indentación"), systemImage: "decrease.indent")
             }
             .disabled(depth == 0)
+            Button {
+                controller.reorder(taskID: task.id, direction: -1)
+            } label: {
+                Label(L("task.moveUp", "Mover arriba"), systemImage: "arrow.up")
+            }
+            Button {
+                controller.reorder(taskID: task.id, direction: 1)
+            } label: {
+                Label(L("task.moveDown", "Mover abajo"), systemImage: "arrow.down")
+            }
             if allowMove {
                 Menu {
                     ForEach(controller.document.sections, id: \.id) { s in

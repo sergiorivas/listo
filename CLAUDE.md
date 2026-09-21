@@ -182,6 +182,22 @@ edited. This stays purely in-memory (spec §09: never written to the file).
   whole block, and an empty title isn't evidence the user wants that
   content gone).
 
+## Reordering with ⌘↑ / ⌘↓
+
+With a task or subtask selected, ⌘↑/⌘↓ swap it with its previous/next
+sibling (`ListoEditor.reorderTask`, moving the whole block — note and
+subtasks included). A subtask never leaves its parent and a top-level task
+never leaves its section; first/last is a silent no-op
+(`noSiblingInDirection`, silenced in `DocumentController.reorder`) — moving
+across sections stays the job of "Move to…" / drag & drop.
+
+- Wired as Task-menu commands in `TaskCommands`, like indent/outdent, and
+  disabled while the selected row's title is a live text field: there ⌘↑/⌘↓
+  are the text field's own "jump to start/end" and must not reorder.
+- Logged as a new `reordered` event kind rather than reusing `reindented`
+  (which the log formatter renders as "changed indentation level"). Free Mode
+  doesn't detect pure reorders — the Differ/LLM prompt are unchanged.
+
 ## Things-style row selection
 
 `DocumentController.selectedTaskID` (shared between Kanban and Outline, so

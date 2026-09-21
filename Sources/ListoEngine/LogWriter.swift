@@ -79,6 +79,8 @@ public enum LogFormatter {
             return "moved: \"\(event.text)\""
         case .reindented:
             return "\"\(event.text)\" changed indentation level"
+        case .reordered:
+            return "\"\(event.text)\" changed position"
         case .noteUpdated:
             return "note updated: \"\(event.text)\""
         case .deleted:

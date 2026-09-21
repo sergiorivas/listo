@@ -293,6 +293,14 @@ final class DocumentController: ObservableObject {
         }
     }
 
+    /// ⌘↑ / ⌘↓ — `direction` is -1 (up) or +1 (down). First/last among its
+    /// siblings is an expected boundary, so it's a silent no-op.
+    func reorder(taskID: UUID, direction: Int) {
+        perform(followSelectionFrom: taskID, silencing: { $0 == .noSiblingInDirection }) {
+            try $0.reorderTask(taskID: taskID, direction: direction)
+        }
+    }
+
     func move(taskID: UUID, toSectionID sectionID: UUID) {
         perform(followSelectionFrom: taskID) { try $0.moveTask(taskID: taskID, toSectionID: sectionID) }
     }
