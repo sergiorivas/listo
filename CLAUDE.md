@@ -197,6 +197,15 @@ edited. This stays purely in-memory (spec §09: never written to the file).
   `Scripts/publish_cask.sh`. If a Developer ID is ever set up, this is
   the path to swap for a signed/notarized one.
 
+- **Task-count badge on every section header** (Kanban column, Kanban
+  subgroup, Outline heading; `SectionCountBadge`). `ListoSection.taskCount`
+  counts the section's tasks plus its subsections' tasks, *not* subtasks —
+  they live inside their parent's card/row, so counting them would make the
+  badge disagree with the cards on screen. It's the total (open + done) and
+  shows `0` for an empty section. The collapsed Kanban column used to print
+  `allTasksRecursive.count` (subtasks included) as plain text; it now uses
+  the same badge and count so collapsed and expanded agree.
+
 ## Subtask log text and Delete-on-empty
 
 - **Log text carries the parent.** Any logged action on a subtask writes
