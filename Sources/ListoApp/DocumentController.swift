@@ -270,6 +270,10 @@ final class DocumentController: ObservableObject {
         perform(followSelectionFrom: taskID) { try $0.renameTask(taskID: taskID, newText: newText) }
     }
 
+    func setPriority(taskID: UUID, priority: TaskPriority) {
+        perform { try $0.setPriority(taskID: taskID, priority: priority) }
+    }
+
     func renameSection(sectionID: UUID, newTitle: String) {
         perform { try $0.renameSection(sectionID: sectionID, newTitle: newTitle) }
     }
@@ -351,12 +355,12 @@ final class DocumentController: ObservableObject {
         let orderedIDs: [UUID]
         switch viewStyle {
         case .outline:
-            orderedIDs = document.allTasksRecursive.map(\.id)
+            orderedIDs = document.allTasksInDisplayOrder.map(\.id)
         case .kanban:
             guard let column = document.sections.first(where: { section in
                 section.allTasksRecursive.contains { $0.id == taskID }
             }) else { return nil }
-            orderedIDs = column.allTasksRecursive.map(\.id)
+            orderedIDs = column.allTasksInDisplayOrder.map(\.id)
         }
         guard let idx = orderedIDs.firstIndex(of: taskID) else { return nil }
         let newIdx = idx + direction

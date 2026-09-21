@@ -197,7 +197,7 @@ private struct KanbanColumn: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(section.tasks, id: \.id) { task in
+                    ForEach(section.displayTasks, id: \.id) { task in
                         TaskChip(controller: controller, task: task)
                     }
                     ForEach(section.subsections, id: \.id) { sub in
@@ -297,7 +297,7 @@ private struct KanbanSubgroup: View {
                 SectionAddTaskButton { controller.addTaskAndEdit(toSectionID: section.id) }
                 SectionDeleteButton { controller.deleteSection(sectionID: section.id) }
             }
-            ForEach(section.tasks, id: \.id) { task in
+            ForEach(section.displayTasks, id: \.id) { task in
                 TaskChip(controller: controller, task: task)
             }
             ForEach(section.subsections, id: \.id) { sub in
@@ -378,7 +378,7 @@ private struct TaskRow: View {
 
             if !task.subtasks.isEmpty {
                 VStack(alignment: .leading, spacing: 3) {
-                    ForEach(task.subtasks, id: \.id) { sub in
+                    ForEach(task.displaySubtasks, id: \.id) { sub in
                         TaskRow(controller: controller, task: sub, depth: depth + 1, allowMove: false, onEditNote: onEditNote)
                     }
                 }
@@ -414,6 +414,8 @@ private struct TaskRow: View {
                 .buttonStyle(.plain)
 
                 titleField
+
+                PriorityBadge(priority: task.priority, dimmed: task.state == .done)
 
                 if canHaveNote, task.note == nil {
                     Button {
@@ -544,6 +546,8 @@ private struct TaskRow: View {
                     Label(L("task.moveTo", "Mover a…"), systemImage: "arrow.turn.up.right")
                 }
             }
+            Divider()
+            PriorityMenu(controller: controller, task: task)
             Divider()
             Button(role: .destructive) {
                 controller.delete(taskID: task.id)

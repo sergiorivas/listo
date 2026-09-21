@@ -106,6 +106,21 @@ struct FreeEditView: NSViewRepresentable {
                     storage.addAttribute(.foregroundColor, value: NSColor.systemGreen, range: match.range)
                 }
             }
+            // A task line's trailing `!`/`!!`/`!!!` is its priority — the
+            // one place the raw marker is shown (Kanban/Outline use an
+            // indicator), coloured to match that indicator.
+            if let priorityRegex = try? NSRegularExpression(pattern: "^[ \\t]*- \\[[ xX]\\].*[ \\t](!{1,3})[ \\t]*$", options: [.anchorsMatchLines]) {
+                for match in priorityRegex.matches(in: nsText as String, range: full) {
+                    let range = match.range(at: 1)
+                    let color: NSColor = switch range.length {
+                    case 1: .systemBlue
+                    case 2: .systemOrange
+                    default: .systemRed
+                    }
+                    storage.addAttribute(.foregroundColor, value: color, range: range)
+                    storage.addAttribute(.font, value: boldFont, range: range)
+                }
+            }
             storage.endEditing()
             textView.font = regularFont
         }

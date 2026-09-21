@@ -96,7 +96,7 @@ private struct OutlineSection: View {
             }
             .padding(.leading, CGFloat(depth) * 16)
 
-            ForEach(section.tasks, id: \.id) { task in
+            ForEach(section.displayTasks, id: \.id) { task in
                 OutlineTaskRow(controller: controller, task: task, sectionDepth: depth + 1)
             }
 
@@ -191,7 +191,7 @@ private struct OutlineTaskNode: View {
         VStack(alignment: .leading, spacing: 2) {
             ownRow
 
-            ForEach(task.subtasks, id: \.id) { sub in
+            ForEach(task.displaySubtasks, id: \.id) { sub in
                 OutlineTaskNode(
                     controller: controller,
                     task: sub,
@@ -231,6 +231,8 @@ private struct OutlineTaskNode: View {
                 .buttonStyle(.plain)
 
                 titleField
+
+                PriorityBadge(priority: task.priority, dimmed: task.state == .done)
 
                 if canHaveNote, task.note == nil {
                     Button {
@@ -361,6 +363,8 @@ private struct OutlineTaskNode: View {
                     Label(L("task.moveTo", "Mover a…"), systemImage: "arrow.turn.up.right")
                 }
             }
+            Divider()
+            PriorityMenu(controller: controller, task: task)
             Divider()
             Button(role: .destructive) {
                 controller.delete(taskID: task.id)
