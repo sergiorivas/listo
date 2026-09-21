@@ -109,6 +109,14 @@ public enum ListoDiffer {
                 ))
                 structuralChanges += 1
             }
+            if old.task.priority != new.task.priority {
+                events.append(LogEvent(
+                    file: fileName, event: .priorityChanged, taskID: new.task.shortID,
+                    sectionPath: .path(new.sectionPath),
+                    text: new.task.priority == .none ? new.logText : "\(new.logText) \(new.task.priority.marker)",
+                    source: .freeEdit, interpretedBy: .heuristic
+                ))
+            }
             if old.task.note != new.task.note {
                 events.append(LogEvent(
                     file: fileName, event: .noteUpdated, taskID: new.task.shortID,

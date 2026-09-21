@@ -81,6 +81,14 @@ public enum LogFormatter {
             return "\"\(event.text)\" changed indentation level"
         case .reordered:
             return "\"\(event.text)\" changed position"
+        case .priorityChanged:
+            // `text` carries the new marker as a trailing token when a
+            // priority was set, and nothing when it was cleared (see
+            // `ListoEditor.setPriority`).
+            let (title, priority) = TaskPriority.split(event.text)
+            return priority == .none
+                ? "priority cleared: \"\(event.text)\""
+                : "priority set to \(priority.marker): \"\(title)\""
         case .noteUpdated:
             return "note updated: \"\(event.text)\""
         case .deleted:

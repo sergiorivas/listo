@@ -100,8 +100,9 @@ public final class ListoEditor {
         let box = newState == .done ? "[x]" : "[ ]"
         let logText = document.logText(for: task)
         let sectionPath = (document.location(of: task)?.section).map { document.path(to: $0) ?? [$0.title] }
-        lines[line] = indent + "- \(box) " + task.text
-        _ = rest
+        // Only the checkbox changes; everything after it (including any
+        // priority marker) is kept exactly as written.
+        lines[line] = indent + "- \(box)" + rest.dropFirst(5)
         try commit()
 
         let event = LogEvent(
@@ -121,10 +122,16 @@ public final class ListoEditor {
         guard let task = findTask(taskID) else { throw ListoEditorError.taskNotFound }
         let line = task.lineRange!.lowerBound
         let (indent, _) = splitIndent(lines[line])
-        let box = task.state == .done ? "[x]" : "[ ]"
         let sectionPath = (document.location(of: task)?.section).map { document.path(to: $0) ?? [$0.title] }
-        let logText = document.logText(for: task, text: newText)
-        lines[line] = indent + "- \(box) " + newText
+        // The views show (and edit) the title without its priority marker,
+        // so a plain rename must keep the priority; typing a marker into
+        // the new text (`Buy milk !!`) sets it instead.
+        let parsed = TaskPriority.split(newText)
+        let hasTypedMarker = parsed.priority != .none
+        let newTitle = hasTypedMarker ? parsed.text : newText
+        let priority = hasTypedMarker ? parsed.priority : task.priority
+        let logText = document.logText(for: task, text: newTitle)
+        lines[line] = ListoSerializer.taskLine(indent: indent, state: task.state, text: newTitle, priority: priority)
         try commit(trackingLine: line)
 
         let event = LogEvent(
@@ -133,6 +140,38 @@ public final class ListoEditor {
             taskID: task.shortID,
             sectionPath: sectionPath.map { .path($0) },
             text: logText,
+            source: .app,
+            interpretedBy: .userAction
+        )
+        return try logWriter.append(event)
+    }
+
+    /// Sets (or, with `.none`, clears) a task's or subtask's priority by
+    /// rewriting the trailing `!`/`!!`/`!!!` marker on its line. The task
+    /// keeps its position in the file — priority only changes where it is
+    /// *displayed* (`ListoTask.sortedByPriority`) — and its id, since ids
+    /// are derived from the title, not the priority.
+    ///
+    /// Logged with the marker appended to `text` when set, or bare when
+    /// cleared (`LogFormatter` tells the two apart by that trailing
+    /// marker, which a task's own text can never end with — it is parsed
+    /// off).
+    @discardableResult
+    public func setPriority(taskID: UUID, priority: TaskPriority) throws -> LogEvent {
+        guard let task = findTask(taskID) else { throw ListoEditorError.taskNotFound }
+        let line = task.lineRange!.lowerBound
+        let (indent, _) = splitIndent(lines[line])
+        let sectionPath = (document.location(of: task)?.section).map { document.path(to: $0) ?? [$0.title] }
+        let logText = document.logText(for: task)
+        lines[line] = ListoSerializer.taskLine(indent: indent, state: task.state, text: task.text, priority: priority)
+        try commit()
+
+        let event = LogEvent(
+            file: fileURL.lastPathComponent,
+            event: .priorityChanged,
+            taskID: task.shortID,
+            sectionPath: sectionPath.map { .path($0) },
+            text: priority == .none ? logText : "\(logText) \(priority.marker)",
             source: .app,
             interpretedBy: .userAction
         )
@@ -247,7 +286,9 @@ public final class ListoEditor {
         guard document.depth(of: task) < Self.maxSubtaskDepth else {
             throw ListoEditorError.maxDepthReached
         }
-        let siblings = parent?.subtasks ?? section.tasks
+        // The sibling *above it on screen* (display order), which is not
+        // necessarily the one above it in the file once priorities differ.
+        let siblings = parent?.displaySubtasks ?? section.displayTasks
         guard let taskIndex = siblings.firstIndex(where: { $0.id == task.id }), taskIndex > 0 else {
             throw ListoEditorError.noPrecedingSibling
         }
@@ -337,9 +378,14 @@ public final class ListoEditor {
         guard let (section, parent) = document.location(of: task) else {
             throw ListoEditorError.taskNotFound
         }
-        let siblings = parent?.subtasks ?? section.tasks
+        // Siblings are displayed sorted by priority, so "up/down" means
+        // among the ones on screen — and only within the same priority: the
+        // file order is the user's custom order *inside* a priority, while
+        // crossing into another one is what `setPriority` is for.
+        let siblings = parent?.displaySubtasks ?? section.displayTasks
         guard let taskIndex = siblings.firstIndex(where: { $0.id == task.id }),
-              siblings.indices.contains(taskIndex + direction)
+              siblings.indices.contains(taskIndex + direction),
+              siblings[taskIndex + direction].priority == task.priority
         else { throw ListoEditorError.noSiblingInDirection }
         let neighbor = siblings[taskIndex + direction]
         let logText = document.logText(for: task)

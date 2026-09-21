@@ -42,12 +42,19 @@ private enum LLMPrompts {
 
         Return ONLY a JSON array (no extra text, no markdown fences), where \
         each element has:
-        {"event": "created"|"completed"|"edited"|"note_updated"|"deleted",
+        {"event": "created"|"completed"|"edited"|"note_updated"|"priority_changed"|"deleted",
          "text": "the task's current text",
          "section_path": ["section", "subsection"] | null}
 
         For a subtask (a task indented under another), write "text" as \
         "<parent task> > <subtask>" so the log keeps its context.
+
+        A task line may end with a priority marker, "!" (low), "!!" \
+        (medium) or "!!!" (high), e.g. "- [ ] Pay rent !!". The marker is not \
+        part of the task's text: never include it in "text" for other \
+        events, and report adding, removing or changing one as a single \
+        "priority_changed" event whose "text" is the task's text followed by \
+        the new marker (or just the text if the priority was removed).
 
         Distinguish an "edited" task from a "deleted" one plus a new \
         "created" one by comparing the text: if the text is the same or \

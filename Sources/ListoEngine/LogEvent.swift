@@ -11,6 +11,7 @@ public struct LogEvent: Codable, Equatable {
         case movedSection = "moved_section"
         case reindented
         case reordered
+        case priorityChanged = "priority_changed"
         case noteUpdated = "note_updated"
         case deleted
         /// An ambiguous Modo Libre diff with no LLM available to interpret it

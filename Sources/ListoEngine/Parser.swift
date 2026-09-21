@@ -140,8 +140,11 @@ public enum ListoParser {
 
             let (level, rest) = indentLevel(of: rawLine)
 
-            if let (state, text) = parseCheckbox(rest) {
+            if let (state, rawText) = parseCheckbox(rest) {
                 finalizeNote()
+                // The priority marker is not part of the title: ids, the
+                // differ and every view work with the clean text.
+                let (text, priority) = TaskPriority.split(rawText)
 
                 let taskID: UUID
                 if level == 0 {
@@ -153,7 +156,7 @@ public enum ListoParser {
                     let sectionKey = currentTargetSection()?.id.uuidString ?? "loose"
                     taskID = nextID(seed: "task|\(sectionKey)|fallback|\(text)")
                 }
-                let task = ListoTask(id: taskID, text: text, state: state, lineRange: idx..<(idx + 1))
+                let task = ListoTask(id: taskID, text: text, state: state, priority: priority, lineRange: idx..<(idx + 1))
 
                 if level == 0 {
                     if let section = currentTargetSection() {

@@ -6,6 +6,45 @@ public enum TaskState: String, Codable, Sendable {
     case done
 }
 
+/// A task's priority, written in the file as a trailing `!`, `!!` or `!!!`
+/// token on the task line (`- [ ] Pay rent !!!`). It is stripped from
+/// `ListoTask.text` on parse — Kanban/Outline show a dedicated indicator
+/// instead, and only Free Mode ever shows the raw marker.
+public enum TaskPriority: Int, Codable, Comparable, CaseIterable, Sendable {
+    case none = 0
+    case low = 1
+    case medium = 2
+    case high = 3
+
+    public static func < (lhs: TaskPriority, rhs: TaskPriority) -> Bool {
+        lhs.rawValue < rhs.rawValue
+    }
+
+    /// How this priority is written in the file: `""`, `"!"`, `"!!"` or `"!!!"`.
+    public var marker: String { String(repeating: "!", count: rawValue) }
+
+    /// Splits a task line's text into its title and trailing priority
+    /// marker. The marker must be the *last whitespace-separated token*
+    /// (`Buy milk !!`), not merely a trailing `!` (`Buy milk!` stays plain
+    /// prose), and only `!`, `!!` and `!!!` count — `!!!!` is just text.
+    public static func split(_ text: String) -> (text: String, priority: TaskPriority) {
+        var end = text.endIndex
+        while end > text.startIndex, text[text.index(before: end)].isWhitespace {
+            end = text.index(before: end)
+        }
+        var tokenStart = end
+        while tokenStart > text.startIndex, !text[text.index(before: tokenStart)].isWhitespace {
+            tokenStart = text.index(before: tokenStart)
+        }
+        let token = text[tokenStart..<end]
+        guard (1...3).contains(token.count), token.allSatisfy({ $0 == "!" }),
+              let priority = TaskPriority(rawValue: token.count)
+        else { return (text, .none) }
+        let title = text[..<tokenStart].trimmingCharacters(in: .whitespaces)
+        return (title, priority)
+    }
+}
+
 /// A single task or subtask. Identity (`id`) is ephemeral and in-memory only —
 /// it is never written to the markdown file (see spec §09: task identity is
 /// resolved by position + text matching, not a stored id).
@@ -13,6 +52,7 @@ public final class ListoTask: Identifiable {
     public let id: UUID
     public var text: String
     public var state: TaskState
+    public var priority: TaskPriority
     /// Free markdown text indented under the task (links, code fences, prose).
     /// Treated as one opaque blob for diffing purposes (spec §05).
     public var note: String?
@@ -26,6 +66,7 @@ public final class ListoTask: Identifiable {
         id: UUID = UUID(),
         text: String,
         state: TaskState = .open,
+        priority: TaskPriority = .none,
         note: String? = nil,
         subtasks: [ListoTask] = [],
         lineRange: Range<Int>? = nil
@@ -33,6 +74,7 @@ public final class ListoTask: Identifiable {
         self.id = id
         self.text = text
         self.state = state
+        self.priority = priority
         self.note = note
         self.subtasks = subtasks
         self.lineRange = lineRange
@@ -42,6 +84,24 @@ public final class ListoTask: Identifiable {
     /// this in-memory object only.
     public var shortID: String {
         "t_" + id.uuidString.prefix(4).lowercased()
+    }
+
+    /// `subtasks` as displayed: highest priority first, file order kept
+    /// within a priority (see `ListoTask.sortedByPriority`).
+    public var displaySubtasks: [ListoTask] { Self.sortedByPriority(subtasks) }
+
+    /// Stable sort, highest priority first. The file keeps the user's own
+    /// order (what ⌘↑/⌘↓ edit, and what Free Mode shows); priority only
+    /// decides how a list of siblings is *displayed*, so tasks of equal
+    /// priority stay in the order they have in the file.
+    public static func sortedByPriority(_ tasks: [ListoTask]) -> [ListoTask] {
+        tasks.enumerated()
+            .sorted { a, b in
+                a.element.priority != b.element.priority
+                    ? a.element.priority > b.element.priority
+                    : a.offset < b.offset
+            }
+            .map(\.element)
     }
 }
 
@@ -75,6 +135,18 @@ public final class ListoSection: Identifiable {
     /// (e.g. "s_8f2a"), stable for the lifetime of this in-memory object only.
     public var shortID: String {
         "s_" + id.uuidString.prefix(4).lowercased()
+    }
+
+    /// `tasks` as displayed, highest priority first (`ListoTask.sortedByPriority`).
+    public var displayTasks: [ListoTask] { ListoTask.sortedByPriority(tasks) }
+
+    /// Like `allTasksRecursive`, but in the order the views show them:
+    /// each sibling list sorted by priority.
+    public var allTasksInDisplayOrder: [ListoTask] {
+        func walk(_ tasks: [ListoTask]) -> [ListoTask] {
+            ListoTask.sortedByPriority(tasks).flatMap { [$0] + walk($0.subtasks) }
+        }
+        return walk(tasks) + subsections.flatMap(\.allTasksInDisplayOrder)
     }
 
     /// All tasks in this section and its subsections, depth-first — every
@@ -187,5 +259,9 @@ public struct ListoDocument {
 
     public var allTasksRecursive: [ListoTask] {
         sections.flatMap { $0.allTasksRecursive }
+    }
+
+    public var allTasksInDisplayOrder: [ListoTask] {
+        sections.flatMap { $0.allTasksInDisplayOrder }
     }
 }

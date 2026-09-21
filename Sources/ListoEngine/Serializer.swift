@@ -32,10 +32,18 @@ public enum ListoSerializer {
         return lines
     }
 
+    /// One task line: `<indent>- [ ] <text>`, plus ` !`/` !!`/` !!!` at the
+    /// end when it has a priority (see `TaskPriority.split` for the parse
+    /// side).
+    static func taskLine(indent: String, state: TaskState, text: String, priority: TaskPriority) -> String {
+        let box = state == .done ? "[x]" : "[ ]"
+        let marker = priority == .none ? "" : (text.isEmpty ? "" : " ") + priority.marker
+        return "\(indent)- \(box) \(text)\(marker)"
+    }
+
     private static func serialize(task: ListoTask, level: Int) -> [String] {
         let indent = String(repeating: "  ", count: level)
-        let box = task.state == .done ? "[x]" : "[ ]"
-        var lines = ["\(indent)- \(box) \(task.text)"]
+        var lines = [taskLine(indent: indent, state: task.state, text: task.text, priority: task.priority)]
         if let note = task.note {
             // `task.note` is stored dedented (see ListoParser.finalizeNote);
             // re-add the one indent unit that marks it as this task's note.
