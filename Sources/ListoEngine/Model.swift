@@ -140,6 +140,13 @@ public final class ListoSection: Identifiable {
     /// `tasks` as displayed, highest priority first (`ListoTask.sortedByPriority`).
     public var displayTasks: [ListoTask] { ListoTask.sortedByPriority(tasks) }
 
+    /// Number of tasks in this section and its subsections — what the count
+    /// badge shows. Subtasks aren't counted: they're part of their parent's
+    /// card/row, so a badge of 3 over three visible cards reads correctly.
+    public var taskCount: Int {
+        tasks.count + subsections.reduce(0) { $0 + $1.taskCount }
+    }
+
     /// Like `allTasksRecursive`, but in the order the views show them:
     /// each sibling list sorted by priority.
     public var allTasksInDisplayOrder: [ListoTask] {

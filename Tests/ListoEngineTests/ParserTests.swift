@@ -129,4 +129,12 @@ final class ParserTests: XCTestCase {
         let doc = ListoParser.parse(text)
         XCTAssertEqual(doc.sections[0].tasks[0].subtasks.first?.text, "Child")
     }
+
+    func testTaskCountIncludesSubsectionsButNotSubtasks() {
+        let text = "# ahora\n- [ ] A\n  - [ ] A1\n- [x] B\n## sub\n- [ ] C\n### deeper\n- [ ] D\n# vacio\n"
+        let doc = ListoParser.parse(text)
+        XCTAssertEqual(doc.sections[0].taskCount, 4)
+        XCTAssertEqual(doc.sections[0].subsections[0].taskCount, 2)
+        XCTAssertEqual(doc.sections[1].taskCount, 0)
+    }
 }
