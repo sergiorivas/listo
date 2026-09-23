@@ -11,6 +11,9 @@ struct SectionCountBadge: View {
         Text("\(count)")
             .font(settings.font(.caption, weight: .semibold))
             .monospacedDigit()
+            // Digits roll when a task is added, deleted or moved in/out.
+            .contentTransition(.numericText(value: Double(count)))
+            .animation(Motion.snappy, value: count)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 7)
             .padding(.vertical, 1)

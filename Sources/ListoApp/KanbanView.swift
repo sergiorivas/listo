@@ -34,6 +34,7 @@ struct KanbanView: View {
                 HStack(alignment: .top, spacing: Self.columnSpacing) {
                     ForEach(controller.document.sections, id: \.id) { section in
                         KanbanColumn(controller: controller, section: section)
+                            .transition(Motion.sectionTransition)
                     }
                 }
                 .padding(Self.horizontalPadding)
@@ -109,6 +110,8 @@ private struct KanbanColumn: View {
     /// live drag translation is added to, since `DragGesture.translation`
     /// is always relative to the drag's start, not the previous frame.
     @State private var dragBaseWidth: CGFloat?
+    /// A task card is being dragged over this column (`dropDestination`).
+    @State private var isDropTargeted = false
 
     private var documentKey: String { controller.documentKey }
     private var isCollapsed: Bool {
@@ -137,13 +140,14 @@ private struct KanbanColumn: View {
     }
 
     var body: some View {
-        Group {
-            if isCollapsed {
-                collapsedBody
-            } else {
-                expandedBody
+        VStack(alignment: .leading, spacing: 10) {
+            header
+            if !isCollapsed {
+                taskList
+                    .transition(.opacity)
             }
         }
+        .padding(10)
         .frame(width: currentWidth, alignment: .top)
         .background(columnBackground)
         .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -152,29 +156,30 @@ private struct KanbanColumn: View {
                 resizeHandle
             }
         }
+        .dropTargetHighlight(isDropTargeted)
         .dropDestination(for: String.self) { items, _ in
             guard let idString = items.first, let uuid = UUID(uuidString: idString) else { return false }
             controller.move(taskID: uuid, toSectionID: section.id)
             return true
-        }
+        } isTargeted: { isDropTargeted = $0 }
     }
 
-    private var collapseButton: some View {
-        Button {
-            layout.setCollapsed(!isCollapsed, documentKey: documentKey, sectionTitle: section.title)
-        } label: {
-            Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                .foregroundStyle(.secondary)
-        }
-        .buttonStyle(.plain)
-        .help(isCollapsed ? L("column.expand", "Expandir columna") : L("column.collapse", "Colapsar columna"))
-    }
+    /// One header for both states, so the collapse chevron is the same view
+    /// before and after and can actually rotate (two separate bodies would
+    /// each start out already at their final angle). Collapsed, it's just
+    /// title + task count with the task list hidden — a column can be
+    /// tucked out of the way without losing or hiding its content from the
+    /// file — and the count moves to the trailing edge.
+    private var header: some View {
+        HStack(spacing: 4) {
+            collapseButton
 
-    private var expandedBody: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 4) {
-                collapseButton
-
+            if isCollapsed {
+                Text(section.title)
+                    .font(settings.font(.headline, design: .monospaced, weight: .semibold))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            } else {
                 TextField("", text: $titleText, onCommit: {
                     let trimmed = titleText.trimmingCharacters(in: .whitespaces)
                     if !trimmed.isEmpty, trimmed != section.title {
@@ -190,50 +195,46 @@ private struct KanbanColumn: View {
                 .onAppear { titleText = section.title }
 
                 SectionCountBadge(count: section.taskCount)
-
-                Spacer(minLength: 0)
-
-                SectionAddTaskButton { controller.addTaskAndEdit(toSectionID: section.id) }
-                SectionDeleteButton { controller.deleteSection(sectionID: section.id) }
             }
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(section.displayTasks, id: \.id) { task in
-                        TaskChip(controller: controller, task: task)
-                    }
-                    ForEach(section.subsections, id: \.id) { sub in
-                        KanbanSubgroup(controller: controller, section: sub)
-                    }
-                    if section.tasks.isEmpty && section.subsections.isEmpty {
-                        // Empty section: just the column title, no illustrated
-                        // empty state (spec §04/§09).
-                        EmptyView()
-                    }
-                }
-            }
-        }
-        .padding(10)
-    }
-
-    /// Collapsed columns just show a compact header — title, task count,
-    /// and the button to expand again — with the task list and "add task"
-    /// field hidden, so a column can be tucked out of the way without
-    /// losing or hiding its content from the file.
-    private var collapsedBody: some View {
-        HStack(spacing: 4) {
-            collapseButton
-
-            Text(section.title)
-                .font(settings.font(.headline, design: .monospaced, weight: .semibold))
-                .lineLimit(1)
-                .truncationMode(.tail)
 
             Spacer(minLength: 0)
 
-            SectionCountBadge(count: section.taskCount)
+            if isCollapsed {
+                SectionCountBadge(count: section.taskCount)
+            } else {
+                SectionAddTaskButton { controller.addTaskAndEdit(toSectionID: section.id) }
+                SectionDeleteButton { controller.deleteSection(sectionID: section.id) }
+            }
         }
-        .padding(10)
+    }
+
+    private var collapseButton: some View {
+        Button {
+            withAnimation(Motion.snappy) {
+                layout.setCollapsed(!isCollapsed, documentKey: documentKey, sectionTitle: section.title)
+            }
+        } label: {
+            Image(systemName: "chevron.down")
+                .rotationEffect(.degrees(isCollapsed ? -90 : 0))
+                .foregroundStyle(.secondary)
+        }
+        .buttonStyle(.plain)
+        .help(isCollapsed ? L("column.expand", "Expandir columna") : L("column.collapse", "Colapsar columna"))
+    }
+
+    private var taskList: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(section.displayTasks, id: \.id) { task in
+                    TaskChip(controller: controller, task: task)
+                        .transition(Motion.rowTransition)
+                }
+                ForEach(section.subsections, id: \.id) { sub in
+                    KanbanSubgroup(controller: controller, section: sub)
+                        .transition(Motion.sectionTransition)
+                }
+            }
+        }
     }
 
     /// A thin draggable strip on the column's trailing edge; dragging it
@@ -274,6 +275,7 @@ private struct KanbanSubgroup: View {
     @ObservedObject private var settings = AppSettings.shared
     let section: ListoSection
     @State private var titleText = ""
+    @State private var isDropTargeted = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -301,16 +303,19 @@ private struct KanbanSubgroup: View {
             }
             ForEach(section.displayTasks, id: \.id) { task in
                 TaskChip(controller: controller, task: task)
+                    .transition(Motion.rowTransition)
             }
             ForEach(section.subsections, id: \.id) { sub in
                 KanbanSubgroup(controller: controller, section: sub)
+                    .transition(Motion.sectionTransition)
             }
         }
+        .dropTargetHighlight(isDropTargeted, cornerRadius: 6)
         .dropDestination(for: String.self) { items, _ in
             guard let idString = items.first, let uuid = UUID(uuidString: idString) else { return false }
             controller.move(taskID: uuid, toSectionID: section.id)
             return true
-        }
+        } isTargeted: { isDropTargeted = $0 }
     }
 }
 
@@ -382,6 +387,7 @@ private struct TaskRow: View {
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(task.displaySubtasks, id: \.id) { sub in
                         TaskRow(controller: controller, task: sub, depth: depth + 1, allowMove: false, onEditNote: onEditNote)
+                            .transition(Motion.rowTransition)
                     }
                 }
                 .padding(.leading, depth == 0 ? 18 : 14)
@@ -410,8 +416,7 @@ private struct TaskRow: View {
                     isRowFocused = true
                     controller.toggle(taskID: task.id)
                 } label: {
-                    Image(systemName: task.state == .done ? "checkmark.square.fill" : "square")
-                        .foregroundStyle(task.state == .done ? Color.accentColor : .secondary)
+                    TaskCheckboxIcon(isDone: task.state == .done)
                 }
                 .buttonStyle(.plain)
 
@@ -430,6 +435,7 @@ private struct TaskRow: View {
                     }
                     .buttonStyle(.plain)
                     .opacity(0.35)
+                    .transition(.opacity)
                 }
             }
 
@@ -443,6 +449,7 @@ private struct TaskRow: View {
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                     .padding(.leading, 22)
+                    .transition(Motion.rowTransition)
                     .onTapGesture {
                         controller.selectedTaskID = task.id
                         onEditNote(NoteEditTarget(id: task.id, initialText: note))
@@ -451,7 +458,7 @@ private struct TaskRow: View {
         }
         .padding(4)
         .contentShape(Rectangle())
-        .background(isSelected ? Color.accentColor.opacity(0.22) : Color.clear)
+        .rowHighlight(isSelected: isSelected, isFlashing: controller.flashTaskID == task.id)
         .clipShape(RoundedRectangle(cornerRadius: 5))
         .focusable()
         .focusEffectDisabled()

@@ -48,6 +48,8 @@ struct PriorityBadge: View {
                 .font(settings.font(.caption, weight: .bold))
                 .foregroundStyle(priority.color)
                 .opacity(dimmed ? 0.4 : 1)
+                .contentTransition(.symbolEffect(.replace))
+                .transition(.scale(scale: 0.4).combined(with: .opacity))
                 .help(priority.label)
                 .accessibilityLabel(priority.label)
         }
