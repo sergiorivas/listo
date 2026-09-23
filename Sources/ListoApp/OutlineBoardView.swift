@@ -513,6 +513,12 @@ private struct OutlineTaskNode: View {
             controller.rename(taskID: task.id, newText: trimmed)
         }
         controller.insertSiblingAndEdit(afterTaskID: controller.editingTaskID ?? task.id)
+        // The sibling just inserted is blank, and when *this* row was itself
+        // a blank one its id is the very id the new blank gets — so SwiftUI
+        // keeps this view (and its `text`) for it, and neither `.onAppear`
+        // nor `.onChange(of: isEditing)` fires (editing goes X -> X within
+        // one event). Clear the field by hand or it shows what was just typed.
+        text = ""
     }
 
     /// Tab/⇧Tab: commit whatever was typed, then indent/outdent — following
