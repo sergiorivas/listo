@@ -66,6 +66,15 @@ scattered at every depth) for no real benefit.
   logical content; the file still has the real indentation. Covered by
   tests that force several save cycles with no changes and verify the
   file's indentation doesn't grow.
+- **Return-chained new tasks starting with the previous text**: type into a
+  blank task, press Return, and the fresh blank sibling hashes to the same
+  content-derived id the blank row had before it was renamed, so SwiftUI
+  reuses the view and its `@State text`. The earlier guard (`.onAppear` +
+  `.onChange(of: isEditing)`) can't catch it: `editingTaskID` goes X → X
+  within a single event and `task.text` is `""` both times. `handleReturn`
+  (Kanban and Outline) now clears `text` itself after
+  `insertSiblingAndEdit`. The first blank task worked only because it came
+  from a different id.
 - **Can't edit a subtask's note** (historical, before subtasks lost note
   support entirely — see "Two-level model" above): each subtask row had its
   own `.popover(item:)` *nested inside* the parent `TaskChip`/
