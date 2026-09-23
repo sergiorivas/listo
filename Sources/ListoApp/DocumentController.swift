@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import SwiftUI
 import ListoEngine
 
 /// Ties a `ListoFileDocument` to the `ListoEngine`: owns the parsed tree,
@@ -47,6 +48,11 @@ final class DocumentController: ObservableObject {
     /// that replaces this one, where per-row `@State` would just be
     /// discarded along with the old row, silently dropping out of edit mode.
     @Published var editingTaskID: UUID?
+    /// The task briefly highlighted after it jumps somewhere (moved to
+    /// another section, re-indented, re-prioritised and so re-sorted), so
+    /// the eye can follow it — see `flash(taskID:)` and `RowHighlight`.
+    @Published private(set) var flashTaskID: UUID?
+    private var flashGeneration = 0
     @Published private(set) var logEvents: [LogEvent] = []
     @Published var errorMessage: String?
 
@@ -182,7 +188,7 @@ final class DocumentController: ObservableObject {
     // MARK: - Modo App actions
 
     func addTask(text: String, toSectionID sectionID: UUID) {
-        perform { try $0.addTask(text: text, toSectionID: sectionID) }
+        perform(animation: Motion.snappy) { try $0.addTask(text: text, toSectionID: sectionID) }
     }
 
     /// Adds a new, empty top-level task at the end of `sectionID` and moves
@@ -193,14 +199,14 @@ final class DocumentController: ObservableObject {
     /// existing row (`insertSiblingAndEdit`), never a separate text field
     /// competing for attention.
     func addTaskAndEdit(toSectionID sectionID: UUID) {
-        guard perform({ try $0.addTask(text: "", toSectionID: sectionID) }) else { return }
+        guard perform(animation: Motion.snappy, { try $0.addTask(text: "", toSectionID: sectionID) }) else { return }
         guard let newID = document.allSectionsRecursive.first(where: { $0.id == sectionID })?.tasks.last?.id else { return }
         selectedTaskID = newID
         editingTaskID = newID
     }
 
     func toggle(taskID: UUID) {
-        guard perform({ try $0.toggle(taskID: taskID) }) else { return }
+        guard perform(animation: Motion.quick, { try $0.toggle(taskID: taskID) }) else { return }
         playCompletionSoundIfNeeded(forTaskID: taskID)
         scheduleDoneMoveIfNeeded(forTaskID: taskID)
     }
@@ -271,7 +277,10 @@ final class DocumentController: ObservableObject {
     }
 
     func setPriority(taskID: UUID, priority: TaskPriority) {
-        perform { try $0.setPriority(taskID: taskID, priority: priority) }
+        // The id is stable (the marker isn't part of it), so the row glides
+        // to its new sorted spot; flash it since that jump can be long.
+        guard perform(animation: Motion.snappy, { try $0.setPriority(taskID: taskID, priority: priority) }) else { return }
+        flash(taskID: taskID)
     }
 
     func renameSection(sectionID: UUID, newTitle: String) {
@@ -279,20 +288,20 @@ final class DocumentController: ObservableObject {
     }
 
     func setNote(taskID: UUID, note: String?) {
-        perform { try $0.setNote(taskID: taskID, note: note) }
+        perform(animation: Motion.snappy) { try $0.setNote(taskID: taskID, note: note) }
     }
 
     func indent(taskID: UUID) {
         // First item / already at max nesting are expected boundary
         // conditions reachable from a plain Tab keystroke — no-op instead
         // of an intrusive error alert.
-        perform(followSelectionFrom: taskID, silencing: { $0 == .noPrecedingSibling || $0 == .maxDepthReached }) {
+        perform(animation: Motion.snappy, flash: true, followSelectionFrom: taskID, silencing: { $0 == .noPrecedingSibling || $0 == .maxDepthReached }) {
             try $0.indentTask(taskID: taskID)
         }
     }
 
     func outdent(taskID: UUID) {
-        perform(followSelectionFrom: taskID, silencing: { $0 == .alreadyTopLevel }) {
+        perform(animation: Motion.snappy, flash: true, followSelectionFrom: taskID, silencing: { $0 == .alreadyTopLevel }) {
             try $0.outdentTask(taskID: taskID)
         }
     }
@@ -300,20 +309,20 @@ final class DocumentController: ObservableObject {
     /// ⌘↑ / ⌘↓ — `direction` is -1 (up) or +1 (down). First/last among its
     /// siblings is an expected boundary, so it's a silent no-op.
     func reorder(taskID: UUID, direction: Int) {
-        perform(followSelectionFrom: taskID, silencing: { $0 == .noSiblingInDirection }) {
+        perform(animation: Motion.snappy, followSelectionFrom: taskID, silencing: { $0 == .noSiblingInDirection }) {
             try $0.reorderTask(taskID: taskID, direction: direction)
         }
     }
 
     func move(taskID: UUID, toSectionID sectionID: UUID) {
-        perform(followSelectionFrom: taskID) { try $0.moveTask(taskID: taskID, toSectionID: sectionID) }
+        perform(animation: Motion.snappy, flash: true, followSelectionFrom: taskID) { try $0.moveTask(taskID: taskID, toSectionID: sectionID) }
     }
 
     /// Inserts a new, empty sibling task right after `taskID` (same level —
     /// a subtask gets a subtask sibling) and moves selection/edit focus onto
     /// it, ready to type — the Return-to-keep-typing-the-next-item action.
     func insertSiblingAndEdit(afterTaskID taskID: UUID) {
-        guard perform({ try $0.insertTaskAfter(taskID: taskID, text: "") }) else { return }
+        guard perform(animation: Motion.snappy, { try $0.insertTaskAfter(taskID: taskID, text: "") }) else { return }
         if let newID = editor.lastActionTaskID {
             selectedTaskID = newID
             editingTaskID = newID
@@ -321,7 +330,7 @@ final class DocumentController: ObservableObject {
     }
 
     func delete(taskID: UUID) {
-        guard perform({ try $0.deleteTask(taskID: taskID) }) else { return }
+        guard perform(animation: Motion.snappy, { try $0.deleteTask(taskID: taskID) }) else { return }
         if selectedTaskID == taskID { selectedTaskID = nil }
         if editingTaskID == taskID { editingTaskID = nil }
     }
@@ -384,7 +393,7 @@ final class DocumentController: ObservableObject {
               task.note == nil
         else { return false }
         let neighborID = adjacentTaskID(to: taskID, direction: -1) ?? adjacentTaskID(to: taskID, direction: 1)
-        guard perform({ try $0.deleteTask(taskID: taskID) }) else { return false }
+        guard perform(animation: Motion.snappy, { try $0.deleteTask(taskID: taskID) }) else { return false }
         // Ids are content-derived, so a *following* neighbor can be re-id'd
         // by the delete (e.g. two blank tasks in a row) — only follow the
         // neighbor if it still resolves.
@@ -395,7 +404,7 @@ final class DocumentController: ObservableObject {
     }
 
     func deleteSection(sectionID: UUID) {
-        perform { try $0.deleteSection(sectionID: sectionID) }
+        perform(animation: Motion.snappy) { try $0.deleteSection(sectionID: sectionID) }
     }
 
     /// - Parameter followSelectionFrom: pass the id the action was invoked
@@ -409,6 +418,14 @@ final class DocumentController: ObservableObject {
     ///   now-stale id and throw `taskNotFound`, or leave `editingTaskID`
     ///   pointing at a row that no longer exists — silently dropping out of
     ///   edit mode.
+    /// - Parameter animation: how the resulting tree change animates; `nil`
+    ///   (the default) applies it instantly. Deliberately opt-in per action
+    ///   rather than an always-on animation on the lists: a rename gives the
+    ///   row a new content-derived id (`StableID`), which SwiftUI sees as
+    ///   "row removed, row inserted" — animating that would fade the row
+    ///   out and back in on every committed edit.
+    /// - Parameter flash: after the action, briefly highlight the task it
+    ///   acted on (needs `followSelectionFrom`, for the id to look up).
     /// - Returns: whether the action actually ran (`false` if it threw an
     ///   error that `silencing` swallowed, or an unsilenced one that was
     ///   surfaced via `errorMessage`) — callers that need `editor.
@@ -416,18 +433,30 @@ final class DocumentController: ObservableObject {
     ///   to follow from) should check this first.
     @discardableResult
     private func perform(
+        animation: Animation? = nil,
+        flash: Bool = false,
         followSelectionFrom taskID: UUID? = nil,
         silencing: (ListoEditorError) -> Bool = { _ in false },
         _ action: (ListoEditor) throws -> LogEvent
     ) -> Bool {
         do {
             _ = try action(editor)
-            document = editor.document
             lastKnownText = editor.currentText
             fileDocument.text = editor.currentText
-            if let taskID, let newID = editor.lastActionTaskID {
-                if selectedTaskID == taskID { selectedTaskID = newID }
-                if editingTaskID == taskID { editingTaskID = newID }
+            let apply = {
+                self.document = self.editor.document
+                if let taskID, let newID = self.editor.lastActionTaskID {
+                    if self.selectedTaskID == taskID { self.selectedTaskID = newID }
+                    if self.editingTaskID == taskID { self.editingTaskID = newID }
+                }
+            }
+            if let animation {
+                withAnimation(animation, apply)
+            } else {
+                apply()
+            }
+            if flash, taskID != nil, let newID = editor.lastActionTaskID {
+                self.flash(taskID: newID)
             }
             refreshLog()
             // Persist immediately through Cocoa's own save pipeline — the
@@ -444,6 +473,18 @@ final class DocumentController: ObservableObject {
         } catch {
             errorMessage = "\(error)"
             return false
+        }
+    }
+
+    /// Highlights `taskID`'s row for a moment (`RowHighlight`), fading out
+    /// after — a later flash cancels the earlier one's fade-out.
+    private func flash(taskID: UUID) {
+        flashGeneration += 1
+        let generation = flashGeneration
+        withAnimation(Motion.quick) { flashTaskID = taskID }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            guard let self, self.flashGeneration == generation else { return }
+            withAnimation(Motion.flashFade) { self.flashTaskID = nil }
         }
     }
 
