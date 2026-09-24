@@ -305,6 +305,14 @@ final class DocumentController: ObservableObject {
         }
     }
 
+    /// ⌘← / ⌘→ in Kanban — `direction` is -1 (previous column) or +1 (next).
+    /// First/last column, or a subtask, is an expected boundary: silent no-op.
+    func moveToAdjacentSection(taskID: UUID, direction: Int) {
+        perform(followSelectionFrom: taskID, silencing: { $0 == .noSectionInDirection }) {
+            try $0.moveTaskToAdjacentSection(taskID: taskID, direction: direction)
+        }
+    }
+
     func move(taskID: UUID, toSectionID sectionID: UUID) {
         perform(followSelectionFrom: taskID) { try $0.moveTask(taskID: taskID, toSectionID: sectionID) }
     }

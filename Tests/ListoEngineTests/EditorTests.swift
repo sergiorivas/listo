@@ -258,6 +258,39 @@ final class EditorTests: XCTestCase {
         XCTAssertEqual(editor.document.sections[1].tasks.map(\.text), ["Other", "Migrate DB"])
     }
 
+    func testMoveTaskToAdjacentSectionLandsAtEnd() throws {
+        let editor = makeEditor("# a\n- [ ] A1\n\n# b\n- [ ] B1\n- [ ] B2\n\n# c\n- [ ] C1\n")
+        let b1 = editor.document.sections[1].tasks[0]
+
+        let next = try editor.moveTaskToAdjacentSection(taskID: b1.id, direction: 1)
+        XCTAssertEqual(next.event, .movedSection)
+        XCTAssertEqual(editor.document.sections[1].tasks.map(\.text), ["B2"])
+        XCTAssertEqual(editor.document.sections[2].tasks.map(\.text), ["C1", "B1"])
+
+        let moved = editor.document.sections[2].tasks[1]
+        try editor.moveTaskToAdjacentSection(taskID: moved.id, direction: -1)
+        try editor.moveTaskToAdjacentSection(taskID: editor.document.sections[1].tasks[1].id, direction: -1)
+        XCTAssertEqual(editor.document.sections[0].tasks.map(\.text), ["A1", "B1"])
+    }
+
+    func testMoveTaskToAdjacentSectionBoundariesAndSubtasksThrow() {
+        let editor = makeEditor("# a\n- [ ] A1\n  - [ ] Sub\n\n# b\n- [ ] B1\n")
+        let a1 = editor.document.sections[0].tasks[0]
+        let b1 = editor.document.sections[1].tasks[0]
+        for (id, direction) in [(a1.id, -1), (b1.id, 1), (a1.subtasks[0].id, 1)] {
+            XCTAssertThrowsError(try editor.moveTaskToAdjacentSection(taskID: id, direction: direction)) { error in
+                XCTAssertEqual(error as? ListoEditorError, .noSectionInDirection)
+            }
+        }
+    }
+
+    func testMoveTaskToAdjacentSectionFromSubgroupUsesItsColumn() throws {
+        let editor = makeEditor("# a\n## sub\n- [ ] S1\n\n# b\n- [ ] B1\n")
+        let s1 = editor.document.sections[0].subsections[0].tasks[0]
+        try editor.moveTaskToAdjacentSection(taskID: s1.id, direction: 1)
+        XCTAssertEqual(editor.document.sections[1].tasks.map(\.text), ["B1", "S1"])
+    }
+
     func testMoveTaskWithNoteCarriesNoteAlong() throws {
         let editor = makeEditor("# ahora\n- [ ] Task A\n  a note line\n\n# mas tarde\n")
         let taskID = editor.document.sections[0].tasks[0].id

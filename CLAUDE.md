@@ -252,6 +252,24 @@ across sections stays the job of "Move to…" / drag & drop.
   (which the log formatter renders as "changed indentation level"). Free Mode
   doesn't detect pure reorders — the Differ/LLM prompt are unchanged.
 
+## Moving between Kanban columns with ⌘← / ⌘→
+
+With a top-level task selected (not editing) in Kanban, ⌘←/⌘→ move it to the
+end of the previous/next column (`ListoEditor.moveTaskToAdjacentSection`,
+which resolves the neighbor among `document.sections` and delegates to
+`moveTask`, so it lands where drag & drop / "Move to…" would and logs the
+same `movedSection` event).
+
+- "Column" means a top-level section; a task inside a column's subgroup
+  counts as being in that column and goes to the neighbor column's own tasks.
+- First/last column and subtasks throw `noSectionInDirection`, silenced in
+  `DocumentController.moveToAdjacentSection` like `noSiblingInDirection`.
+- Task-menu commands like ⌘↑/⌘↓, additionally disabled outside Kanban
+  (Outline has no columns) and while the title is a live text field, where
+  ⌘←/⌘→ are the field's own "jump to start/end of line".
+- "End of the column" is the end of file order; since views sort by
+  priority, the task shows at the end of its priority group.
+
 ## Things-style row selection
 
 `DocumentController.selectedTaskID` (shared between Kanban and Outline, so

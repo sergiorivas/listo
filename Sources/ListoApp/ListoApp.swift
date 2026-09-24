@@ -107,6 +107,27 @@ private struct TaskCommands: Commands {
             .keyboardShortcut(.downArrow, modifiers: .command)
             .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
 
+            // Kanban only: columns are what "previous/next section" means
+            // there. Also disabled while editing, where ⌘←/⌘→ are the text
+            // field's own "jump to start/end of line".
+            Button(L("task.moveToPreviousSection", "Mover a la sección anterior")) {
+                if let controller, let id = controller.selectedTaskID {
+                    controller.moveToAdjacentSection(taskID: id, direction: -1)
+                }
+            }
+            .keyboardShortcut(.leftArrow, modifiers: .command)
+            .disabled(controller?.mode != .app || controller?.viewStyle != .kanban
+                      || controller?.selectedTaskID == nil || isEditingSelectedTask)
+
+            Button(L("task.moveToNextSection", "Mover a la sección siguiente")) {
+                if let controller, let id = controller.selectedTaskID {
+                    controller.moveToAdjacentSection(taskID: id, direction: 1)
+                }
+            }
+            .keyboardShortcut(.rightArrow, modifiers: .command)
+            .disabled(controller?.mode != .app || controller?.viewStyle != .kanban
+                      || controller?.selectedTaskID == nil || isEditingSelectedTask)
+
             Divider()
 
             Button(L("task.previous", "Tarea anterior")) {

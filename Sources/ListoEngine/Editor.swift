@@ -8,6 +8,7 @@ public enum ListoEditorError: Error, Equatable {
     case alreadyTopLevel
     case subtaskNoteNotSupported
     case noSiblingInDirection
+    case noSectionInDirection
 }
 
 /// Implements every "Modo App" action from spec §03. Each method performs a
@@ -452,6 +453,28 @@ public final class ListoEditor {
             interpretedBy: .userAction
         )
         return try logWriter.append(event)
+    }
+
+    /// Moves a top-level task to the end of the previous (`direction: -1`) or
+    /// next (`direction: +1`) top-level section — the ⌘←/⌘→ action in Kanban,
+    /// where top-level sections are the columns. A task inside a column's
+    /// subgroup counts as being in that column. Subtasks never leave their
+    /// parent, and there being no column that way, throw
+    /// `noSectionInDirection`.
+    @discardableResult
+    public func moveTaskToAdjacentSection(taskID: UUID, direction: Int) throws -> LogEvent {
+        guard let task = findTask(taskID) else { throw ListoEditorError.taskNotFound }
+        guard let (section, parent) = document.location(of: task) else {
+            throw ListoEditorError.taskNotFound
+        }
+        func contains(_ node: ListoSection) -> Bool {
+            node.id == section.id || node.subsections.contains(where: contains)
+        }
+        guard parent == nil,
+              let columnIndex = document.sections.firstIndex(where: contains),
+              document.sections.indices.contains(columnIndex + direction)
+        else { throw ListoEditorError.noSectionInDirection }
+        return try moveTask(taskID: taskID, toSectionID: document.sections[columnIndex + direction].id)
     }
 
     @discardableResult

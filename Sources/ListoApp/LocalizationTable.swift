@@ -36,6 +36,8 @@ enum LocalizationTable {
         "task.outdent": ["es": "Quitar indentación", "en": "Outdent"],
         "task.moveUp": ["es": "Mover arriba", "en": "Move up"],
         "task.moveDown": ["es": "Mover abajo", "en": "Move down"],
+        "task.moveToPreviousSection": ["es": "Mover a la sección anterior", "en": "Move to previous section"],
+        "task.moveToNextSection": ["es": "Mover a la sección siguiente", "en": "Move to next section"],
         "task.moveTo": ["es": "Mover a…", "en": "Move to…"],
         "task.delete": ["es": "Eliminar", "en": "Delete"],
         "task.priority": ["es": "Prioridad", "en": "Priority"],
