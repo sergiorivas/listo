@@ -110,8 +110,13 @@ one — subtasks have no notes, and the sort is over tasks.
   priorities is what the context menu's Priority submenu is for. Indent uses
   the sibling above *on screen*, and ↑/↓ navigation follows display order
   (`allTasksInDisplayOrder`).
-- **Writers must preserve the marker.** `toggle` now edits only the
-  checkbox (keeps the rest of the line verbatim); `renameTask` keeps the
+- **Completing drops the marker.** `toggle` to done rewrites the line
+  without its priority (a finished task has nothing left to prioritise);
+  reopening does not restore it, since the marker is gone from the file.
+  Toggling a task with no priority still edits only the checkbox and keeps
+  the rest of the line verbatim. Only the App Mode action does this — a
+  Free Mode edit that ticks a box leaves the marker as typed.
+- **Other writers must preserve the marker.** `renameTask` keeps the
   existing priority since the edit field shows the clean title — unless the
   new text itself ends in a marker, which sets it (type `Buy milk !!` into
   the title field). Line building goes through `ListoSerializer.taskLine`.

@@ -102,11 +102,23 @@ final class PriorityTests: XCTestCase {
         XCTAssertEqual(editor.currentText, "# a\n- [ ] P\n  a note\n  - [ ] S !!\n")
     }
 
-    func testToggleKeepsThePriorityMarker() throws {
-        let editor = makeEditor("# a\n- [ ] Task A  !!\n")
+    func testCompletingATaskDropsItsPriorityMarker() throws {
+        let editor = makeEditor("# a\n- [ ] Task A  !!\n  - [ ] Sub !!!\n")
+        let id = editor.document.sections[0].tasks[0].id
+        let event = try editor.toggle(taskID: id)
+        XCTAssertEqual(event.text, "Task A")
+        XCTAssertEqual(editor.currentText, "# a\n- [x] Task A\n  - [ ] Sub !!!\n")
+        XCTAssertEqual(editor.document.sections[0].tasks[0].priority, .none)
+
+        let sub = editor.document.sections[0].tasks[0].subtasks[0]
+        try editor.toggle(taskID: sub.id)
+        XCTAssertEqual(editor.currentText, "# a\n- [x] Task A\n  - [x] Sub\n")
+    }
+
+    func testReopeningKeepsTheLineAsIs() throws {
+        let editor = makeEditor("# a\n- [x] Task A\n")
         try editor.toggle(taskID: editor.document.sections[0].tasks[0].id)
-        XCTAssertEqual(editor.currentText, "# a\n- [x] Task A  !!\n")
-        XCTAssertEqual(editor.document.sections[0].tasks[0].priority, .medium)
+        XCTAssertEqual(editor.currentText, "# a\n- [ ] Task A\n")
     }
 
     func testRenameKeepsPriorityUnlessANewMarkerIsTyped() throws {

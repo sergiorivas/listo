@@ -101,9 +101,15 @@ public final class ListoEditor {
         let box = newState == .done ? "[x]" : "[ ]"
         let logText = document.logText(for: task)
         let sectionPath = (document.location(of: task)?.section).map { document.path(to: $0) ?? [$0.title] }
-        // Only the checkbox changes; everything after it (including any
-        // priority marker) is kept exactly as written.
-        lines[line] = indent + "- \(box)" + rest.dropFirst(5)
+        if newState == .done, task.priority != .none {
+            // A finished task no longer needs a priority: drop the marker.
+            // Reopening it does not bring it back.
+            lines[line] = ListoSerializer.taskLine(indent: indent, state: .done, text: task.text, priority: .none)
+        } else {
+            // Only the checkbox changes; everything after it is kept exactly
+            // as written.
+            lines[line] = indent + "- \(box)" + rest.dropFirst(5)
+        }
         try commit()
 
         let event = LogEvent(
