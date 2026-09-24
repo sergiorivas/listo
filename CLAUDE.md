@@ -324,6 +324,52 @@ indicators competing. `.focusEffectDisabled()` was added to every `.plain`
 container, so the background highlight described above is the only visible
 selection indicator.
 
+## Animations
+
+Everything goes through `Motion.swift` (shared timings, transitions, and the
+`RowHighlight` / `DropTargetHighlight` / `TaskCheckboxIcon` pieces). Each
+accessor returns `nil` under the system's Reduce Motion setting, which
+SwiftUI reads as "no animation" — so there is no separate Settings toggle.
+
+- **Animation is opt-in per action, not an `.animation` on the lists.**
+  Rename, indent/outdent and move give a task a new content-derived id
+  (`StableID`), which SwiftUI sees as "row removed, row inserted". An
+  always-on list animation would fade the row out and back in on every
+  committed rename. `DocumentController.perform(animation:)` wraps the
+  tree/selection update in `withAnimation` only for the actions that
+  should animate (add, delete, toggle, note, priority, reorder, indent,
+  outdent, move, delete section). Rename, section rename, and everything
+  Free Mode triggers (`handleSave`, mode switch) stay instant — a Free Mode
+  save reloads the whole tree from text, and animating that would replay a
+  mass shuffle.
+- **Rows use `Motion.rowTransition`** (fade + slight scale from the top),
+  columns/sections `Motion.sectionTransition`. Move-to-section is therefore
+  a fade-out in the source and fade-in at the destination, not a flight
+  across; a `matchedGeometryEffect` fly-across would need the controller to
+  hand the views an old-id → new-id mapping. Not built — the simple version
+  reads fine, and that mapping is the fragile part.
+- **`flashTaskID`**: after priority change, move and indent/outdent the row
+  gets a brief accent flash (`RowHighlight`), because those can move a row
+  far. Reorder (⌘↑/⌘↓) doesn't flash — it's a one-slot glide.
+- **Strikethrough isn't animated.** A checked title's colour fades and the
+  checkbox swaps with a symbol transition + bounce, but the native
+  `.strikethrough` stays: faking it with a growing overlay line only draws
+  correctly for a single line, and Kanban's `.wrap` title mode can span
+  several.
+- **Not animated on purpose**: entering/leaving title edit mode (the
+  Text ↔ TextField swap is tied to the focus workarounds above), column
+  resize dragging (must track the mouse), typing.
+- **Kanban column header is one view for both states** (collapsed and
+  expanded). It used to be two separate bodies, so the collapse chevron was
+  a fresh view each time and couldn't rotate; now a single `chevron.down`
+  rotates and the task list is the only part that's conditionally removed.
+- **Return-chained blank rows** reuse the same view (X → X id, see the bug
+  above), so no insertion transition fires for them — the chained case is
+  instant by construction.
+- Drag hover feedback (`dropTargetHighlight`) on columns, subgroups and
+  Outline sections; previously a dragged card gave no sign of where it
+  would land.
+
 ## Homebrew distribution: Formula → Cask
 
 `brew install sergiorivas/tap/listo` failed on a clean machine with

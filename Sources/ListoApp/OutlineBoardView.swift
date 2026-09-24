@@ -10,6 +10,7 @@ struct OutlineBoardView: View {
             VStack(alignment: .leading, spacing: 14) {
                 ForEach(controller.document.sections, id: \.id) { section in
                     OutlineSection(controller: controller, section: section, depth: 0)
+                        .transition(Motion.sectionTransition)
                 }
             }
             .padding(16)
@@ -72,6 +73,8 @@ private struct OutlineSection: View {
     /// Heading nesting depth (H1/H2/H3), independent of subtask depth.
     let depth: Int
     @State private var titleText = ""
+    /// A task row is being dragged over this section (`dropDestination`).
+    @State private var isDropTargeted = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -100,18 +103,21 @@ private struct OutlineSection: View {
 
             ForEach(section.displayTasks, id: \.id) { task in
                 OutlineTaskRow(controller: controller, task: task, sectionDepth: depth + 1)
+                    .transition(Motion.rowTransition)
             }
 
             ForEach(section.subsections, id: \.id) { sub in
                 OutlineSection(controller: controller, section: sub, depth: depth + 1)
+                    .transition(Motion.sectionTransition)
             }
         }
         .contentShape(Rectangle())
+        .dropTargetHighlight(isDropTargeted, cornerRadius: 6)
         .dropDestination(for: String.self) { items, _ in
             guard let idString = items.first, let uuid = UUID(uuidString: idString) else { return false }
             controller.move(taskID: uuid, toSectionID: section.id)
             return true
-        }
+        } isTargeted: { isDropTargeted = $0 }
     }
 
     private var headingFont: Font {
@@ -202,6 +208,7 @@ private struct OutlineTaskNode: View {
                     allowMove: false,
                     onEditNote: onEditNote
                 )
+                .transition(Motion.rowTransition)
             }
         }
     }
@@ -227,8 +234,7 @@ private struct OutlineTaskNode: View {
                     isRowFocused = true
                     controller.toggle(taskID: task.id)
                 } label: {
-                    Image(systemName: task.state == .done ? "checkmark.square.fill" : "square")
-                        .foregroundStyle(task.state == .done ? Color.accentColor : .secondary)
+                    TaskCheckboxIcon(isDone: task.state == .done)
                 }
                 .buttonStyle(.plain)
 
@@ -247,6 +253,7 @@ private struct OutlineTaskNode: View {
                     }
                     .buttonStyle(.plain)
                     .opacity(0.35)
+                    .transition(.opacity)
                 }
             }
 
@@ -260,6 +267,7 @@ private struct OutlineTaskNode: View {
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                     .padding(.leading, 22)
+                    .transition(Motion.rowTransition)
                     .onTapGesture {
                         controller.selectedTaskID = task.id
                         onEditNote(NoteEditTarget(id: task.id, initialText: note))
@@ -269,7 +277,7 @@ private struct OutlineTaskNode: View {
         .padding(.leading, leadingPadding)
         .padding(.vertical, 2)
         .contentShape(Rectangle())
-        .background(isSelected ? Color.accentColor.opacity(0.22) : Color.clear)
+        .rowHighlight(isSelected: isSelected, isFlashing: controller.flashTaskID == task.id)
         .clipShape(RoundedRectangle(cornerRadius: 5))
         .focusable()
         .focusEffectDisabled()
