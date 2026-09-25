@@ -162,6 +162,12 @@ private struct KanbanColumn: View {
         .frame(width: currentWidth, height: isCollapsed ? collapsedHeight : nil, alignment: .top)
         .background(columnBackground)
         .clipShape(RoundedRectangle(cornerRadius: 10))
+        .contentShape(Rectangle())
+        .onTapGesture {
+            // A collapsed column is a small target: any click on the strip
+            // expands it, not just the chevron.
+            if isCollapsed { toggleCollapsed() }
+        }
         .overlay(alignment: .trailing) {
             if !isCollapsed {
                 resizeHandle
@@ -227,11 +233,15 @@ private struct KanbanColumn: View {
         .frame(maxHeight: .infinity, alignment: .top)
     }
 
+    private func toggleCollapsed() {
+        withAnimation(Motion.snappy) {
+            layout.setCollapsed(!isCollapsed, documentKey: documentKey, sectionTitle: section.title)
+        }
+    }
+
     private var collapseButton: some View {
         Button {
-            withAnimation(Motion.snappy) {
-                layout.setCollapsed(!isCollapsed, documentKey: documentKey, sectionTitle: section.title)
-            }
+            toggleCollapsed()
         } label: {
             Image(systemName: "chevron.down")
                 .rotationEffect(.degrees(isCollapsed ? -90 : 0))
