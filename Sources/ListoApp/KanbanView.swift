@@ -33,7 +33,11 @@ struct KanbanView: View {
             ScrollView(.horizontal) {
                 HStack(alignment: .top, spacing: Self.columnSpacing) {
                     ForEach(controller.document.sections, id: \.id) { section in
-                        KanbanColumn(controller: controller, section: section)
+                        KanbanColumn(
+                            controller: controller,
+                            section: section,
+                            collapsedHeight: max(geometry.size.height - Self.horizontalPadding * 2, 0)
+                        )
                             .transition(Motion.sectionTransition)
                     }
                 }
@@ -101,6 +105,9 @@ private struct KanbanColumn: View {
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var layout = KanbanLayoutStore.shared
     let section: ListoSection
+    /// Height of a collapsed column: the full height of the board, so every
+    /// collapsed column is the same fixed strip whatever its title or count.
+    let collapsedHeight: CGFloat
     @State private var titleText = ""
     /// Width while a drag on the resize handle is in progress — laid over
     /// the persisted width so the column tracks the mouse smoothly; only
@@ -140,15 +147,19 @@ private struct KanbanColumn: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            header
-            if !isCollapsed {
-                taskList
-                    .transition(.opacity)
+        Group {
+            if isCollapsed {
+                collapsedStrip
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    header
+                    taskList
+                        .transition(.opacity)
+                }
             }
         }
         .padding(10)
-        .frame(width: currentWidth, alignment: .top)
+        .frame(width: currentWidth, height: isCollapsed ? collapsedHeight : nil, alignment: .top)
         .background(columnBackground)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .overlay(alignment: .trailing) {
@@ -164,48 +175,56 @@ private struct KanbanColumn: View {
         } isTargeted: { isDropTargeted = $0 }
     }
 
-    /// One header for both states, so the collapse chevron is the same view
-    /// before and after and can actually rotate (two separate bodies would
-    /// each start out already at their final angle). Collapsed, it's just
-    /// title + task count with the task list hidden — a column can be
-    /// tucked out of the way without losing or hiding its content from the
-    /// file — and the count moves to the trailing edge.
     private var header: some View {
         HStack(spacing: 4) {
             collapseButton
 
-            if isCollapsed {
+            TextField("", text: $titleText, onCommit: {
+                let trimmed = titleText.trimmingCharacters(in: .whitespaces)
+                if !trimmed.isEmpty, trimmed != section.title {
+                    controller.renameSection(sectionID: section.id, newTitle: trimmed)
+                } else {
+                    titleText = section.title
+                }
+            })
+            .textFieldStyle(.plain)
+            .focusEffectDisabled()
+            .font(settings.font(.headline, design: .monospaced, weight: .semibold))
+            .lineLimit(1)
+            .onAppear { titleText = section.title }
+
+            SectionCountBadge(count: section.taskCount)
+
+            Spacer(minLength: 0)
+
+            SectionAddTaskButton { controller.addTaskAndEdit(toSectionID: section.id) }
+            SectionDeleteButton { controller.deleteSection(sectionID: section.id) }
+        }
+    }
+
+    /// The collapsed column: a fixed-width, full-board-height strip with the
+    /// chevron and count on top and the title running down the side (like
+    /// Trello/Jira). The old collapsed state squeezed the horizontal header
+    /// into 44pt, so the title truncated and the badge wrapped, and the
+    /// column's height depended on both. Here nothing can wrap: the title is
+    /// rotated inside a frame of the remaining height and truncates at the end.
+    private var collapsedStrip: some View {
+        VStack(spacing: 8) {
+            collapseButton
+            SectionCountBadge(count: section.taskCount)
+                .fixedSize()
+            GeometryReader { geo in
+                let lineHeight = geo.size.width
                 Text(section.title)
                     .font(settings.font(.headline, design: .monospaced, weight: .semibold))
                     .lineLimit(1)
                     .truncationMode(.tail)
-            } else {
-                TextField("", text: $titleText, onCommit: {
-                    let trimmed = titleText.trimmingCharacters(in: .whitespaces)
-                    if !trimmed.isEmpty, trimmed != section.title {
-                        controller.renameSection(sectionID: section.id, newTitle: trimmed)
-                    } else {
-                        titleText = section.title
-                    }
-                })
-                .textFieldStyle(.plain)
-                .focusEffectDisabled()
-                .font(settings.font(.headline, design: .monospaced, weight: .semibold))
-                .lineLimit(1)
-                .onAppear { titleText = section.title }
-
-                SectionCountBadge(count: section.taskCount)
-            }
-
-            Spacer(minLength: 0)
-
-            if isCollapsed {
-                SectionCountBadge(count: section.taskCount)
-            } else {
-                SectionAddTaskButton { controller.addTaskAndEdit(toSectionID: section.id) }
-                SectionDeleteButton { controller.deleteSection(sectionID: section.id) }
+                    .frame(width: geo.size.height, height: lineHeight, alignment: .leading)
+                    .rotationEffect(.degrees(90), anchor: .topLeading)
+                    .offset(x: lineHeight)
             }
         }
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     private var collapseButton: some View {

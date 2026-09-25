@@ -359,10 +359,13 @@ SwiftUI reads as "no animation" — so there is no separate Settings toggle.
 - **Not animated on purpose**: entering/leaving title edit mode (the
   Text ↔ TextField swap is tied to the focus workarounds above), column
   resize dragging (must track the mouse), typing.
-- **Kanban column header is one view for both states** (collapsed and
-  expanded). It used to be two separate bodies, so the collapse chevron was
-  a fresh view each time and couldn't rotate; now a single `chevron.down`
-  rotates and the task list is the only part that's conditionally removed.
+- **Collapsed Kanban column is a separate fixed-size strip** (`collapsedStrip`),
+  not the header squeezed into 44pt: the old shared header let the title
+  truncate and the count badge wrap, so the collapsed height varied with
+  both. It's now full board height (passed from `KanbanView`'s
+  `GeometryReader`) with chevron + count on top and the title rotated down
+  the side. The trade-off: the chevron is a different view in each state, so
+  it crossfades instead of rotating.
 - **Return-chained blank rows** reuse the same view (X → X id, see the bug
   above), so no insertion transition fires for them — the chained case is
   instant by construction.
