@@ -39,6 +39,8 @@ enum LocalizationTable {
         "task.moveToPreviousSection": ["es": "Mover a la sección anterior", "en": "Move to previous section"],
         "task.moveToNextSection": ["es": "Mover a la sección siguiente", "en": "Move to next section"],
         "task.moveTo": ["es": "Mover a…", "en": "Move to…"],
+        "task.previous": ["es": "Tarea anterior", "en": "Previous task"],
+        "task.next": ["es": "Tarea siguiente", "en": "Next task"],
         "task.delete": ["es": "Eliminar", "en": "Delete"],
         "task.priority": ["es": "Prioridad", "en": "Priority"],
         "priority.none": ["es": "Sin prioridad", "en": "No priority"],
