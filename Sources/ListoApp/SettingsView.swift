@@ -117,6 +117,11 @@ struct SettingsView: View {
                     isOn: $settings.completionSoundEnabled
                 )
 
+                Toggle(
+                    L("settings.deleteSound", "Sonido al eliminar una tarea"),
+                    isOn: $settings.deleteSoundEnabled
+                )
+
                 LabeledContent(L("settings.doneMoveDelay", "Mover a Hecho después de")) {
                     Stepper(
                         value: $settings.doneMoveDelaySeconds,

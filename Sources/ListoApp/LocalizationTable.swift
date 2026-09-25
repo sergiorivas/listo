@@ -113,6 +113,9 @@ enum LocalizationTable {
         "settings.completionSound": [
             "es": "Sonido al completar una tarea", "en": "Play a sound when completing a task",
         ],
+        "settings.deleteSound": [
+            "es": "Sonido al eliminar una tarea", "en": "Play a sound when deleting a task",
+        ],
         "settings.doneMoveDelay": [
             "es": "Mover a Hecho después de", "en": "Move to Done after",
         ],

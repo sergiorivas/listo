@@ -189,6 +189,15 @@ final class AppSettings: ObservableObject {
             reloadToken &+= 1
         }
     }
+    /// Plays a short system sound when a task or subtask is deleted — see
+    /// `DocumentController.delete`/`deleteEmpty`. On by default, unlike the
+    /// completion sound, since it was asked for explicitly.
+    @Published var deleteSoundEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(deleteSoundEnabled, forKey: Keys.deleteSoundEnabled)
+            reloadToken &+= 1
+        }
+    }
     /// Kanban's first/last column (by position, not by title — see
     /// `KanbanColumn`) can carry its own background tint, since those slots
     /// conventionally mean something specific (first: Today/Focus; last:
@@ -232,6 +241,7 @@ final class AppSettings: ObservableObject {
         static let llmProvider = "listo.settings.llmProvider"
         static let doneMoveDelaySeconds = "listo.settings.doneMoveDelaySeconds"
         static let completionSoundEnabled = "listo.settings.completionSoundEnabled"
+        static let deleteSoundEnabled = "listo.settings.deleteSoundEnabled"
         static let firstSectionBackgroundEnabled = "listo.settings.firstSectionBackgroundEnabled"
         static let firstSectionBackgroundColor = "listo.settings.firstSectionBackgroundColor"
         static let lastSectionBackgroundEnabled = "listo.settings.lastSectionBackgroundEnabled"
@@ -251,6 +261,7 @@ final class AppSettings: ObservableObject {
         let storedDelay = defaults.object(forKey: Keys.doneMoveDelaySeconds) as? Double
         doneMoveDelaySeconds = storedDelay ?? Self.defaultDoneMoveDelaySeconds
         completionSoundEnabled = defaults.object(forKey: Keys.completionSoundEnabled) as? Bool ?? false
+        deleteSoundEnabled = defaults.object(forKey: Keys.deleteSoundEnabled) as? Bool ?? true
         firstSectionBackgroundEnabled = defaults.object(forKey: Keys.firstSectionBackgroundEnabled) as? Bool ?? true
         firstSectionBackgroundColor = defaults.string(forKey: Keys.firstSectionBackgroundColor)
             .flatMap(Color.init(hex:)) ?? Self.defaultFirstSectionBackground

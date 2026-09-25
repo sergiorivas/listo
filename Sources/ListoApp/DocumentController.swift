@@ -219,11 +219,23 @@ final class DocumentController: ObservableObject {
         guard AppSettings.shared.completionSoundEnabled,
               document.allTasksRecursive.first(where: { $0.id == taskID })?.state == .done
         else { return }
-        // Restart rather than let a quick second completion be swallowed by
-        // the still-playing first one (`play()` is a no-op while playing).
-        let sound = NSSound(named: "Glass")
+        play(soundNamed: "Glass")
+    }
+
+    /// Restart rather than let a quick second sound be swallowed by the
+    /// still-playing first one (`play()` is a no-op while playing).
+    private func play(soundNamed name: String) {
+        let sound = NSSound(named: name)
         sound?.stop()
         sound?.play()
+    }
+
+    /// Plays `AppSettings.deleteSoundEnabled`'s sound after a task or
+    /// subtask was deleted from App Mode (not for deletions inferred from a
+    /// Free Mode edit, nor whole sections).
+    private func playDeleteSoundIfNeeded() {
+        guard AppSettings.shared.deleteSoundEnabled else { return }
+        play(soundNamed: "Funk")
     }
 
     /// User-requested addition: checking off a top-level task, when the
@@ -341,6 +353,7 @@ final class DocumentController: ObservableObject {
         guard perform(animation: Motion.snappy, { try $0.deleteTask(taskID: taskID) }) else { return }
         if selectedTaskID == taskID { selectedTaskID = nil }
         if editingTaskID == taskID { editingTaskID = nil }
+        playDeleteSoundIfNeeded()
     }
 
     /// Moves selection to the task immediately before (`direction: -1`) or
@@ -408,6 +421,7 @@ final class DocumentController: ObservableObject {
         let target = neighborID.flatMap { id in document.allTasksRecursive.contains { $0.id == id } ? id : nil }
         editingTaskID = keepEditing ? target : nil
         selectedTaskID = target
+        playDeleteSoundIfNeeded()
         return true
     }
 
