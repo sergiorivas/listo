@@ -45,11 +45,35 @@ public final class ListoEditor {
     public private(set) var lastActionTaskID: UUID?
     private var lines: [String]
 
+    /// One Modo App action, as whole-file snapshots: what the text was
+    /// before it, what it was after, and the event it logged. Snapshots (not
+    /// per-action inverse operations) so undoing a delete brings back the
+    /// task's note and subtasks exactly, and undoing a move/priority/toggle
+    /// can't drift from what the forward action actually wrote.
+    private struct HistoryEntry {
+        let before: String
+        let after: String
+        let event: LogEvent
+    }
+    private var undoStack: [HistoryEntry] = []
+    private var redoStack: [HistoryEntry] = []
+    /// The text as of the last commit/undo/redo/external load — the "before"
+    /// of the next action.
+    private var baseText: String
+    /// Set by `commit()`, consumed by `record(_:)` once the action's event
+    /// exists.
+    private var pendingChange: (before: String, after: String)?
+    public static let maxUndoDepth = 100
+
+    public var canUndo: Bool { !undoStack.isEmpty }
+    public var canRedo: Bool { !redoStack.isEmpty }
+
     public init(fileURL: URL, initialText: String, autoPersist: Bool = true) {
         self.fileURL = fileURL
         self.logWriter = LogWriter(documentURL: fileURL)
         self.document = ListoParser.parse(initialText)
         self.lines = initialText.components(separatedBy: "\n")
+        self.baseText = initialText
         self.autoPersist = autoPersist
     }
 
@@ -63,9 +87,75 @@ public final class ListoEditor {
     /// Resyncs the in-memory buffer to text that changed out from under the
     /// editor — the host document's own text binding after a Modo Libre
     /// edit or save.
+    ///
+    /// If the text really changed, the undo/redo history is dropped: its
+    /// snapshots predate the outside edit, and restoring one would silently
+    /// throw that edit away.
     public func loadExternalText(_ text: String) {
+        if text != baseText {
+            undoStack.removeAll()
+            redoStack.removeAll()
+        }
+        baseText = text
         lines = text.components(separatedBy: "\n")
         document = ListoParser.parse(text)
+    }
+
+    // MARK: - Undo / redo
+
+    /// Reverts the most recent Modo App action (of any kind — a delete, a
+    /// move, a priority change, a toggle, a rename, ...) by restoring the
+    /// text from before it, and logs an `undone` event naming it. `nil` if
+    /// there is nothing to undo. `lastActionTaskID` is not touched.
+    @discardableResult
+    public func undo() throws -> LogEvent? {
+        guard let entry = undoStack.popLast() else { return nil }
+        try restore(text: entry.before)
+        redoStack.append(entry)
+        return try logWriter.append(historyEvent(.undone, for: entry.event))
+    }
+
+    /// Re-applies the action most recently undone, logging a `redone` event.
+    /// `nil` if there is nothing to redo. Any new action clears the redo
+    /// stack.
+    @discardableResult
+    public func redo() throws -> LogEvent? {
+        guard let entry = redoStack.popLast() else { return nil }
+        try restore(text: entry.after)
+        undoStack.append(entry)
+        return try logWriter.append(historyEvent(.redone, for: entry.event))
+    }
+
+    private func historyEvent(_ kind: LogEvent.Kind, for original: LogEvent) -> LogEvent {
+        LogEvent(
+            file: fileURL.lastPathComponent,
+            event: kind,
+            taskID: original.taskID,
+            sectionPath: original.sectionPath,
+            text: original.text,
+            source: .app,
+            interpretedBy: .userAction,
+            reverts: original.event
+        )
+    }
+
+    private func restore(text: String) throws {
+        lines = text.components(separatedBy: "\n")
+        baseText = text
+        try write(text)
+    }
+
+    /// Appends the action's event to the log and files the action's
+    /// snapshots under it in the undo history. Every public action ends with
+    /// this instead of a bare `logWriter.append`.
+    private func record(_ event: LogEvent) throws -> LogEvent {
+        if let change = pendingChange {
+            undoStack.append(HistoryEntry(before: change.before, after: change.after, event: event))
+            if undoStack.count > Self.maxUndoDepth { undoStack.removeFirst() }
+            redoStack.removeAll()
+            pendingChange = nil
+        }
+        return try logWriter.append(event)
     }
 
     // MARK: - Actions
@@ -89,7 +179,7 @@ public final class ListoEditor {
             source: .app,
             interpretedBy: .userAction
         )
-        return try logWriter.append(event)
+        return try record(event)
     }
 
     @discardableResult
@@ -121,7 +211,7 @@ public final class ListoEditor {
             source: .app,
             interpretedBy: .userAction
         )
-        return try logWriter.append(event)
+        return try record(event)
     }
 
     @discardableResult
@@ -150,7 +240,7 @@ public final class ListoEditor {
             source: .app,
             interpretedBy: .userAction
         )
-        return try logWriter.append(event)
+        return try record(event)
     }
 
     /// Sets (or, with `.none`, clears) a task's or subtask's priority by
@@ -182,7 +272,7 @@ public final class ListoEditor {
             source: .app,
             interpretedBy: .userAction
         )
-        return try logWriter.append(event)
+        return try record(event)
     }
 
     /// Renames a section's heading (the Kanban column title / Outline
@@ -209,7 +299,7 @@ public final class ListoEditor {
             source: .app,
             interpretedBy: .userAction
         )
-        return try logWriter.append(event)
+        return try record(event)
     }
 
     /// Notes are a top-level-task feature only — Listo's model is
@@ -242,7 +332,7 @@ public final class ListoEditor {
             source: .app,
             interpretedBy: .userAction
         )
-        return try logWriter.append(event)
+        return try record(event)
     }
 
     /// Inserts a new, initially empty sibling task immediately after
@@ -273,7 +363,7 @@ public final class ListoEditor {
             source: .app,
             interpretedBy: .userAction
         )
-        return try logWriter.append(event)
+        return try record(event)
     }
 
     /// Listo's task tree is deliberately two levels deep: a task, and its
@@ -324,7 +414,7 @@ public final class ListoEditor {
             source: .app,
             interpretedBy: .userAction
         )
-        return try logWriter.append(event)
+        return try record(event)
     }
 
     /// Converts a subtask into a sibling of its own parent, placed right
@@ -371,7 +461,7 @@ public final class ListoEditor {
             source: .app,
             interpretedBy: .userAction
         )
-        return try logWriter.append(event)
+        return try record(event)
     }
 
     /// Moves a task (with its note and subtasks) one position up
@@ -419,7 +509,7 @@ public final class ListoEditor {
             source: .app,
             interpretedBy: .userAction
         )
-        return try logWriter.append(event)
+        return try record(event)
     }
 
     /// Moves a top-level task to another top-level section (drag & drop, or
@@ -458,7 +548,7 @@ public final class ListoEditor {
             source: .app,
             interpretedBy: .userAction
         )
-        return try logWriter.append(event)
+        return try record(event)
     }
 
     /// Moves a top-level task to the end of the previous (`direction: -1`) or
@@ -503,7 +593,7 @@ public final class ListoEditor {
             source: .app,
             interpretedBy: .userAction
         )
-        return try logWriter.append(event)
+        return try record(event)
     }
 
     /// Deletes an entire section — its heading, its own tasks, and every
@@ -528,7 +618,7 @@ public final class ListoEditor {
             source: .app,
             interpretedBy: .userAction
         )
-        return try logWriter.append(event)
+        return try record(event)
     }
 
     public func readLog() throws -> [LogEvent] {
@@ -540,6 +630,12 @@ public final class ListoEditor {
     /// Writes the current buffer to disk and re-parses it into `document`.
     private func commit() throws {
         let text = lines.joined(separator: "\n")
+        pendingChange = (baseText, text)
+        baseText = text
+        try write(text)
+    }
+
+    private func write(_ text: String) throws {
         if autoPersist {
             try text.write(to: fileURL, atomically: true, encoding: .utf8)
         }

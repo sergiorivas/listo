@@ -429,6 +429,44 @@ final class DocumentController: ObservableObject {
         perform(animation: Motion.snappy) { try $0.deleteSection(sectionID: sectionID) }
     }
 
+    // MARK: - Undo / redo
+
+    var canUndo: Bool { editor.canUndo }
+    var canRedo: Bool { editor.canRedo }
+
+    /// ⌘Z — reverts the last Modo App action (see `ListoEditor.undo`). Free
+    /// Mode has its own text undo, so this is App Mode only.
+    func undo() { stepHistory { try $0.undo() } }
+
+    /// ⇧⌘Z — re-applies the last undone action.
+    func redo() { stepHistory { try $0.redo() } }
+
+    private func stepHistory(_ step: (ListoEditor) throws -> LogEvent?) {
+        guard mode == .app else { return }
+        do {
+            guard let event = try step(editor) else { return }
+            syncDocumentText()
+            withAnimation(Motion.snappy) {
+                document = editor.document
+                // Ids are content-derived: a selection/edit target that the
+                // step removed (undoing a create, redoing a delete) is gone.
+                let live = Set(document.allTasksRecursive.map(\.id))
+                if let id = selectedTaskID, !live.contains(id) { selectedTaskID = nil }
+                if let id = editingTaskID, !live.contains(id) { editingTaskID = nil }
+                // Point at what the step brought back or moved, when it can
+                // be found (log `taskID`s are the derived short ids).
+                if let touched = document.allTasksRecursive.first(where: { $0.shortID == event.taskID }) {
+                    selectedTaskID = touched.id
+                    flash(taskID: touched.id)
+                }
+            }
+            refreshLog()
+            saveIfPossible()
+        } catch {
+            errorMessage = "\(error)"
+        }
+    }
+
     /// - Parameter followSelectionFrom: pass the id the action was invoked
     ///   on for `renameTask`/`indentTask`/`outdentTask`/`moveTask` — those
     ///   give the task a new content/position-derived id (`StableID`), so
@@ -463,8 +501,7 @@ final class DocumentController: ObservableObject {
     ) -> Bool {
         do {
             _ = try action(editor)
-            lastKnownText = editor.currentText
-            fileDocument.text = editor.currentText
+            syncDocumentText()
             let apply = {
                 self.document = self.editor.document
                 if let taskID, let newID = self.editor.lastActionTaskID {
@@ -481,20 +518,29 @@ final class DocumentController: ObservableObject {
                 self.flash(taskID: newID)
             }
             refreshLog()
-            // Persist immediately through Cocoa's own save pipeline — the
-            // only writer of the real file (see the class doc comment) —
-            // rather than waiting for its own autosave timer. Only once the
-            // document already has a real path: on a brand-new, never-saved
-            // document this would pop the "Save As" panel on every action.
-            if fileURL != nil {
-                NSApp.sendAction(#selector(NSDocument.save(_:)), to: nil, from: nil)
-            }
+            saveIfPossible()
             return true
         } catch let error as ListoEditorError where silencing(error) {
             return false
         } catch {
             errorMessage = "\(error)"
             return false
+        }
+    }
+
+    private func syncDocumentText() {
+        lastKnownText = editor.currentText
+        fileDocument.text = editor.currentText
+    }
+
+    /// Persist immediately through Cocoa's own save pipeline — the only
+    /// writer of the real file (see the class doc comment) — rather than
+    /// waiting for its own autosave timer. Only once the document already has
+    /// a real path: on a brand-new, never-saved document this would pop the
+    /// "Save As" panel on every action.
+    private func saveIfPossible() {
+        if fileURL != nil {
+            NSApp.sendAction(#selector(NSDocument.save(_:)), to: nil, from: nil)
         }
     }
 

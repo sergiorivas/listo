@@ -32,6 +32,8 @@ enum LocalizationTable {
             "en": "The file changed externally and couldn't be merged automatically (set an API key in Settings).",
         ],
 
+        "edit.undo": ["es": "Deshacer", "en": "Undo"],
+        "edit.redo": ["es": "Rehacer", "en": "Redo"],
         "task.indent": ["es": "Indentar", "en": "Indent"],
         "task.outdent": ["es": "Quitar indentación", "en": "Outdent"],
         "task.moveUp": ["es": "Mover arriba", "en": "Move up"],

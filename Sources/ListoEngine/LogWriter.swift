@@ -51,8 +51,8 @@ public final class LogWriter {
 
 /// Renders log events as human-readable lines, e.g. `moved: "Migrar base de
 /// datos" from ahora → mas tarde`. Kept separate from `LogEvent` itself so
-/// the wire schema stays exactly the 8 documented fields with no
-/// display-only baggage.
+/// the wire schema stays the 8 documented fields (plus `reverts`, only on
+/// undo/redo events) with no display-only baggage.
 ///
 /// Always English regardless of the app's display language — the log is
 /// meant to be a stable, greppable record (and possibly read by tooling),
@@ -93,6 +93,14 @@ public enum LogFormatter {
             return "note updated: \"\(event.text)\""
         case .deleted:
             return "deleted: \"\(event.text)\""
+        case .undone, .redone:
+            // Reads as the action it reverted/re-applied, e.g.
+            // `undone — deleted: "Buy milk"`.
+            let prefix = event.event == .undone ? "undone" : "redone"
+            guard let original = event.reverts else { return "\(prefix): \"\(event.text)\"" }
+            var inner = event
+            inner.event = original
+            return "\(prefix) — " + describe(inner)
         case .unresolved:
             return "unrecognized change (\(event.text))"
         }

@@ -250,6 +250,47 @@ edited. This stays purely in-memory (spec §09: never written to the file).
   whole block, and an empty title isn't evidence the user wants that
   content gone).
 
+## Undo / redo (⌘Z / ⇧⌘Z)
+
+`ListoEditor` keeps an undo/redo history of Modo App actions; ⌘Z / ⇧⌘Z
+(Edit menu, `UndoRedoCommands`) step through it via
+`DocumentController.undo()/redo()`.
+
+- **Whole-file snapshots, not inverse operations.** Each entry is
+  `(text before, text after, logged event)`. An inverse per action was
+  rejected: undoing a delete has to bring back the note and subtasks
+  verbatim, and undoing a check has to bring back the priority marker that
+  completing dropped — snapshots get all of that for free and can't drift
+  from what the forward action wrote.
+- **Every App Mode action is undoable, not just delete/move/priority/check.**
+  A partial history is wrong, not just incomplete: restoring a snapshot
+  from before a delete would silently discard a rename made after it.
+  Capture point is `ListoEditor.record(_:)` (replaces the bare
+  `logWriter.append` at the end of each action; `commit()` stashes the
+  before/after text for it). `moveTaskToAdjacentSection` delegates to
+  `moveTask`, so it's one step. History is capped at
+  `maxUndoDepth` (100); a new action clears redo.
+- **Free Mode edits drop the history** (`loadExternalText`, only if the text
+  actually changed): snapshots predate the outside edit and restoring one
+  would throw it away. Free Mode keeps the text view's own undo. Binding a
+  new document to its first file URL rebuilds the editor, so that also
+  starts a fresh history.
+- **Log.** New `undone` / `redone` kinds, plus an optional `reverts` field
+  (the reverted action's kind; omitted from every other event, and old log
+  lines without it still decode). They copy the original's `task_id`,
+  `section_path` and `text`; `LogFormatter` renders them as e.g.
+  `undone — deleted: "Buy milk"`. The log stays append-only: undo adds a
+  line, it never rewrites earlier ones. The log isn't what restores state —
+  the in-memory snapshots are, so history doesn't survive closing the window.
+- **Text fields keep their own ⌘Z.** The Edit ▸ Undo/Redo items replace the
+  system ones and forward `undo:`/`redo:` down the responder chain when an
+  `NSText` is first responder (task title, note popover) or in Free Mode.
+  They're never `.disabled`: a disabled item swallows its key equivalent and
+  would block that text undo whenever the task history was empty.
+- Checking a task can be followed by the delayed move to a "Done" section
+  (`scheduleDoneMoveIfNeeded`); that move is its own history step, so
+  undoing a completion after the move takes two ⌘Z.
+
 ## Reordering with ⌘↑ / ⌘↓
 
 With a task or subtask selected, ⌘↑/⌘↓ swap it with its previous/next

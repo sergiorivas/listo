@@ -153,6 +153,44 @@ private struct TaskCommands: Commands {
     }
 }
 
+/// Edit ▸ Undo / Redo (⌘Z / ⇧⌘Z), replacing the system items: those only see
+/// the responder chain's `NSUndoManager`, and App Mode's changes (delete,
+/// move, priority, check, ...) aren't registered with one — they live in
+/// `ListoEditor`'s history.
+///
+/// Whoever is typing keeps their own undo: while a text field/editor is
+/// first responder (a task title, the note popover) and in Free Mode, the
+/// command is forwarded down the responder chain as the plain `undo:`/`redo:`
+/// it would have been. Deliberately never `.disabled`: a disabled menu item
+/// swallows its key equivalent, which would block that text undo whenever
+/// the task history happened to be empty.
+private struct UndoRedoCommands: Commands {
+    @FocusedObject private var controller: DocumentController?
+
+    private func perform(_ selector: Selector, app: (DocumentController) -> Void) {
+        let typing = NSApp.keyWindow?.firstResponder is NSText
+        if let controller, controller.mode == .app, !typing {
+            app(controller)
+        } else {
+            NSApp.sendAction(selector, to: nil, from: nil)
+        }
+    }
+
+    var body: some Commands {
+        CommandGroup(replacing: .undoRedo) {
+            Button(L("edit.undo", "Deshacer")) {
+                perform(Selector(("undo:"))) { $0.undo() }
+            }
+            .keyboardShortcut("z", modifiers: .command)
+
+            Button(L("edit.redo", "Rehacer")) {
+                perform(Selector(("redo:"))) { $0.redo() }
+            }
+            .keyboardShortcut("z", modifiers: [.command, .shift])
+        }
+    }
+}
+
 /// Reopens the last document on launch instead of a blank "untitled" list,
 /// and backs the app's own "Abrir reciente" menu.
 ///
@@ -299,6 +337,7 @@ struct ListoApp: App {
                 }
                 .keyboardShortcut("0", modifiers: .command)
             }
+            UndoRedoCommands()
             TaskCommands()
         }
 

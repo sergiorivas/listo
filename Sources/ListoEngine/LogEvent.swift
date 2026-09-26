@@ -14,6 +14,12 @@ public struct LogEvent: Codable, Equatable {
         case priorityChanged = "priority_changed"
         case noteUpdated = "note_updated"
         case deleted
+        /// A Modo App action was reverted with undo / re-applied with redo.
+        /// The event carries the original action's `taskID`, `sectionPath`
+        /// and `text`, and names that action's kind in `reverts`. Only ever
+        /// written by App Mode (Modo Libre has its own text undo).
+        case undone
+        case redone
         /// An ambiguous Modo Libre diff with no LLM available to interpret it
         /// (no API key configured, or offline) — logged instead of failing
         /// silently or guessing wrong (spec §05).
@@ -46,6 +52,9 @@ public struct LogEvent: Codable, Equatable {
     public var text: String
     public var source: Source
     public var interpretedBy: InterpretedBy
+    /// For `undone`/`redone` events: the kind of the action that was undone
+    /// or redone. `nil` for every other event.
+    public var reverts: Kind?
 
     public init(
         ts: Date = Date(),
@@ -55,7 +64,8 @@ public struct LogEvent: Codable, Equatable {
         sectionPath: SectionPath?,
         text: String,
         source: Source,
-        interpretedBy: InterpretedBy
+        interpretedBy: InterpretedBy,
+        reverts: Kind? = nil
     ) {
         self.ts = ts
         self.file = file
@@ -65,6 +75,7 @@ public struct LogEvent: Codable, Equatable {
         self.text = text
         self.source = source
         self.interpretedBy = interpretedBy
+        self.reverts = reverts
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -73,6 +84,7 @@ public struct LogEvent: Codable, Equatable {
         case sectionPath = "section_path"
         case text, source
         case interpretedBy = "interpreted_by"
+        case reverts
     }
 
     public init(from decoder: Decoder) throws {
@@ -89,6 +101,7 @@ public struct LogEvent: Codable, Equatable {
         source = try c.decode(Source.self, forKey: .source)
         interpretedBy = try c.decode(InterpretedBy.self, forKey: .interpretedBy)
         sectionPath = try c.decodeIfPresent(SectionPath.self, forKey: .sectionPath)
+        reverts = try c.decodeIfPresent(Kind.self, forKey: .reverts)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -101,6 +114,7 @@ public struct LogEvent: Codable, Equatable {
         try c.encode(source, forKey: .source)
         try c.encode(interpretedBy, forKey: .interpretedBy)
         try c.encodeIfPresent(sectionPath, forKey: .sectionPath)
+        try c.encodeIfPresent(reverts, forKey: .reverts)
     }
 
     static let isoFormatter: ISO8601DateFormatter = {
