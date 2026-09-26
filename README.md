@@ -128,7 +128,9 @@ base font size the rest of the sizes are relative to — adjustable there or
 with ⌘+ / ⌘− / ⌘0 at any time, without relaunching the app. The app also
 remembers the last file it had open (reopens it directly on launch instead
 of a blank list) and offers "Open Recent" in the File menu, in addition to
-macOS's own automatic recents.
+macOS's own automatic recents. There is always at least one file open:
+closing the last window opens the most recent other file (or a blank list if
+there is none); quitting is unaffected.
 
 ## Known limitations
 

@@ -204,6 +204,15 @@ edited. This stays purely in-memory (spec §09: never written to the file).
   fixed in English regardless of the language chosen in Settings. The
   user's own task content (`text`, titles) is never translated, as §07
   already established for the rest of the app.
+- **Always at least one document open.** `ListoAppDelegate` observes
+  `NSWindow.willCloseNotification` and, a runloop turn later (the closing
+  document is still registered during `willClose`), opens a replacement if
+  `NSDocumentController.documents` is empty: the most recent existing file
+  *other than the one just closed* (else that one, if it's the only recent),
+  else a blank untitled list. Preferring a different file avoids the window
+  appearing to be unclosable. Quit is exempt (`isTerminating`, set in
+  `applicationWillTerminate`). Not verified with a live GUI run.
+
 - Release distribution is ad-hoc signed + `xattr -cr`, not notarized:
   getting a real Developer ID would mean a paid Apple Developer account
   (~$99/year). Ad-hoc signing plus stripping the download's Gatekeeper

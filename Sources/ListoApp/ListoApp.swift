@@ -172,6 +172,47 @@ final class ListoAppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async { [weak self] in
             self?.openLastFileIfNeeded()
         }
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowWillClose(_:)),
+            name: NSWindow.willCloseNotification, object: nil)
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        isTerminating = true
+    }
+
+    // MARK: Always keep one file open
+
+    private var isTerminating = false
+
+    /// Closing the last document window would leave the app running with
+    /// nothing open, so open another file in its place: the most recent one
+    /// that still exists (preferring one other than the file just closed, so
+    /// closing doesn't just bounce the same file straight back), or a blank
+    /// list if there are none. Deferred a runloop turn because the closing
+    /// document is still registered with `NSDocumentController` while
+    /// `willClose` fires. Quitting is exempt.
+    @objc private func windowWillClose(_ notification: Notification) {
+        let window = notification.object as? NSWindow
+        let closed = (window?.windowController?.document as? NSDocument)?.fileURL
+        DispatchQueue.main.async { [weak self] in
+            self?.ensureDocumentOpen(closed: closed)
+        }
+    }
+
+    private func ensureDocumentOpen(closed: URL?) {
+        guard !isTerminating, NSDocumentController.shared.documents.isEmpty else { return }
+        let existing = RecentFilesStore.shared.recentURLs
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+        guard let target = existing.first(where: { $0 != closed }) ?? existing.first else {
+            NSDocumentController.shared.newDocument(nil)
+            return
+        }
+        NSDocumentController.shared.openDocument(withContentsOf: target, display: true) { document, _, _ in
+            if document == nil, NSDocumentController.shared.documents.isEmpty {
+                NSDocumentController.shared.newDocument(nil)
+            }
+        }
     }
 
     @discardableResult
