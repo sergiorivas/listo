@@ -307,6 +307,28 @@ across sections stays the job of "Move to…" / drag & drop.
   (which the log formatter renders as "changed indentation level"). Free Mode
   doesn't detect pure reorders — the Differ/LLM prompt are unchanged.
 
+## Splitting a task with ⌘T
+
+`ListoEditor.splitTask` replaces a top-level task that has subtasks with one
+top-level task per subtask, named `Parent > Subtask` (the same format the log
+uses for subtask text), in the original's place. Task-menu command plus
+context-menu entry in Kanban and Outline; a task without subtasks throws
+`noSubtasksToSplit`, silenced in `DocumentController.split` and disabled in
+the context menu. Also disabled while the title is a live text field.
+
+- **State and priority carry over per subtask.** Each new task keeps its
+  subtask's done/open state. Priority is the subtask's own, else the
+  parent's; done ones get none, consistent with "Completing drops the
+  marker".
+- **The parent's note is copied onto every new task** rather than dropped
+  or given to only the first. Duplicating is noisy, but losing content
+  silently is worse, and the user can delete the copies they don't want.
+  Not confirmed with the user; revisit if it annoys.
+- **One undo step, one `split` log event** (`text` = the original task),
+  rather than a delete plus N creates, so ⌘Z restores the original in a
+  single press. Free Mode doesn't detect it: the Differ sees a delete and
+  creates, as for any hand edit.
+
 ## Moving between Kanban columns with ⌘← / ⌘→
 
 With a top-level task selected (not editing) in Kanban, ⌘←/⌘→ move it to the
