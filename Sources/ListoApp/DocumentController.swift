@@ -205,6 +205,13 @@ final class DocumentController: ObservableObject {
         editingTaskID = newID
     }
 
+    /// ⌘N: a new task at the end of the first top-level section (the first
+    /// Kanban column), ready to type.
+    func addTaskToFirstSectionAndEdit() {
+        guard let first = document.sections.first else { return }
+        addTaskAndEdit(toSectionID: first.id)
+    }
+
     func toggle(taskID: UUID) {
         guard perform(animation: Motion.quick, { try $0.toggle(taskID: taskID) }) else { return }
         playCompletionSoundIfNeeded(forTaskID: taskID)

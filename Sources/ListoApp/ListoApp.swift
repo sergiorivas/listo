@@ -67,6 +67,14 @@ private struct TaskCommands: Commands {
 
     var body: some Commands {
         CommandMenu(L("menu.task", "Tarea")) {
+            Button(L("task.new", "Nueva tarea")) {
+                controller?.addTaskToFirstSectionAndEdit()
+            }
+            .keyboardShortcut("n", modifiers: .command)
+            .disabled(controller?.mode != .app || controller?.document.sections.isEmpty != false)
+
+            Divider()
+
             Button(L("task.indent", "Indentar")) {
                 if let controller, let id = controller.selectedTaskID {
                     controller.indent(taskID: id)
@@ -293,7 +301,7 @@ struct ListoApp: App {
                 } label: {
                     Label(L("menu.newList", "Nueva lista"), systemImage: "doc.badge.plus")
                 }
-                .keyboardShortcut("n", modifiers: .command)
+                .keyboardShortcut("n", modifiers: [.command, .shift])
 
                 Menu {
                     if recents.recentURLs.isEmpty {
