@@ -333,6 +333,14 @@ final class DocumentController: ObservableObject {
         }
     }
 
+    /// ⌘T — replaces a task with one task per subtask. A task without
+    /// subtasks is an expected no-op.
+    func split(taskID: UUID) {
+        perform(animation: Motion.snappy, followSelectionFrom: taskID, silencing: { $0 == .noSubtasksToSplit }) {
+            try $0.splitTask(taskID: taskID)
+        }
+    }
+
     /// ⌘← / ⌘→ in Kanban — `direction` is -1 (previous column) or +1 (next).
     /// First/last column, or a subtask, is an expected boundary: silent no-op.
     func moveToAdjacentSection(taskID: UUID, direction: Int) {

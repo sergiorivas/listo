@@ -9,6 +9,7 @@ public enum ListoEditorError: Error, Equatable {
     case subtaskNoteNotSupported
     case noSiblingInDirection
     case noSectionInDirection
+    case noSubtasksToSplit
 }
 
 /// Implements every "Modo App" action from spec §03. Each method performs a
@@ -503,6 +504,48 @@ public final class ListoEditor {
         let event = LogEvent(
             file: fileURL.lastPathComponent,
             event: .reordered,
+            taskID: task.shortID,
+            sectionPath: .path(document.path(to: refetch(section)) ?? [section.title]),
+            text: logText,
+            source: .app,
+            interpretedBy: .userAction
+        )
+        return try record(event)
+    }
+
+    /// Replaces a top-level task with one top-level task per subtask, named
+    /// `Parent > Sub`, in the same place — the ⌘T action. Each keeps its
+    /// subtask's state and priority (falling back to the parent's priority
+    /// when open); the parent's note, if any, is copied onto each so no
+    /// content is lost.
+    @discardableResult
+    public func splitTask(taskID: UUID) throws -> LogEvent {
+        guard let task = findTask(taskID) else { throw ListoEditorError.taskNotFound }
+        guard let (section, parent) = document.location(of: task), parent == nil else {
+            throw ListoEditorError.taskNotFound
+        }
+        guard !task.subtasks.isEmpty else { throw ListoEditorError.noSubtasksToSplit }
+        let logText = document.logText(for: task)
+        let (indent, _) = splitIndent(lines[task.lineRange!.lowerBound])
+        let noteLines: [String] = task.note.map {
+            $0.components(separatedBy: "\n").map { $0.isEmpty ? "" : indent + "  " + $0 }
+        } ?? []
+
+        var newLines: [String] = []
+        for sub in task.subtasks {
+            let priority = sub.priority != .none ? sub.priority : task.priority
+            newLines.append(ListoSerializer.taskLine(
+                indent: indent, state: sub.state, text: "\(task.text) > \(sub.text)",
+                priority: sub.state == .done ? .none : priority))
+            newLines.append(contentsOf: noteLines)
+        }
+        let start = task.lineRange!.lowerBound
+        lines.replaceSubrange(fullRange(of: task), with: newLines)
+        try commit(trackingLine: start)
+
+        let event = LogEvent(
+            file: fileURL.lastPathComponent,
+            event: .split,
             taskID: task.shortID,
             sectionPath: .path(document.path(to: refetch(section)) ?? [section.title]),
             text: logText,

@@ -115,6 +115,14 @@ private struct TaskCommands: Commands {
             .keyboardShortcut(.downArrow, modifiers: .command)
             .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
 
+            Button(L("task.split", "Dividir en tareas")) {
+                if let controller, let id = controller.selectedTaskID {
+                    controller.split(taskID: id)
+                }
+            }
+            .keyboardShortcut("t", modifiers: .command)
+            .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
+
             // Kanban only: columns are what "previous/next section" means
             // there. Also disabled while editing, where ⌘←/⌘→ are the text
             // field's own "jump to start/end of line".

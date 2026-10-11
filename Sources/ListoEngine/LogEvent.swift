@@ -11,6 +11,9 @@ public struct LogEvent: Codable, Equatable {
         case movedSection = "moved_section"
         case reindented
         case reordered
+        /// A task with subtasks was replaced by one top-level task per
+        /// subtask (`Parent > Sub`). `text` is the original task's text.
+        case split
         case priorityChanged = "priority_changed"
         case noteUpdated = "note_updated"
         case deleted

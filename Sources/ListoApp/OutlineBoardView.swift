@@ -364,6 +364,12 @@ private struct OutlineTaskNode: View {
             } label: {
                 Label(L("task.moveDown", "Mover abajo"), systemImage: "arrow.down")
             }
+            Button {
+                controller.split(taskID: task.id)
+            } label: {
+                Label(L("task.split", "Dividir en tareas"), systemImage: "arrow.triangle.branch")
+            }
+            .disabled(task.subtasks.isEmpty)
             if allowMove {
                 Menu {
                     ForEach(controller.document.sections, id: \.id) { s in

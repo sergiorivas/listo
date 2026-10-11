@@ -139,6 +139,15 @@ final class EditorTests: XCTestCase {
         }
     }
 
+    func testSplitReplacesTaskWithOnePerSubtask() throws {
+        let editor = makeEditor("# ahora\n- [ ] A !!\n  - [ ] S1\n  - [x] S2\n- [ ] B\n")
+        let aID = editor.document.sections[0].tasks[0].id
+        let event = try editor.splitTask(taskID: aID)
+        XCTAssertEqual(event.event, .split)
+        XCTAssertEqual(editor.currentText, "# ahora\n- [ ] A > S1 !!\n- [x] A > S2\n- [ ] B\n")
+        XCTAssertThrowsError(try editor.splitTask(taskID: editor.document.sections[0].tasks[2].id))
+    }
+
     func testOutdentReversesIndent() throws {
         let editor = makeEditor("# ahora\n- [ ] First\n- [ ] Second\n")
         let secondID = editor.document.sections[0].tasks[1].id

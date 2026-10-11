@@ -44,6 +44,7 @@ enum LocalizationTable {
         "task.new": ["es": "Nueva tarea", "en": "New task"],
         "task.previous": ["es": "Tarea anterior", "en": "Previous task"],
         "task.next": ["es": "Tarea siguiente", "en": "Next task"],
+        "task.split": ["es": "Dividir en tareas", "en": "Split into tasks"],
         "task.delete": ["es": "Eliminar", "en": "Delete"],
         "task.priority": ["es": "Prioridad", "en": "Priority"],
         "priority.none": ["es": "Sin prioridad", "en": "No priority"],
