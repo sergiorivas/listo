@@ -120,6 +120,14 @@ Scripts/build_app.sh      # builds a signed Listo.app into dist/
 Note on `swift test`/`swift run` on Apple Silicon under a Rosetta shell: if
 `xctest`/the binary fails on architecture, run `arch -arm64 swift test`.
 
+## Splitting a task into its subtasks
+
+With a task selected, **⌘T** (Task ▸ Split into tasks, or the context menu)
+replaces it with one top-level task per subtask, named `Parent > Subtask`:
+`Name A` with `S1` and `S2` becomes `Name A > S1` and `Name A > S2`. Each
+keeps its subtask's done state and priority (an open one with none inherits
+the parent's), the parent's note is copied onto each, and ⌘Z undoes it.
+
 ## User preferences
 
 Besides the §07 defaults (system language, system appearance), Settings lets
