@@ -161,3 +161,28 @@ final class UndoTests: XCTestCase {
         XCTAssertNil(try JSONDecoder().decode(LogEvent.self, from: legacy).reverts)
     }
 }
+
+final class BatchTests: XCTestCase {
+    let text = "# a\n- [ ] One\n- [ ] Two\n- [ ] Three\n- [ ] Four\n"
+
+    func testBatchIsOneUndoStep() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).md")
+        let editor = ListoEditor(fileURL: url, initialText: text, autoPersist: false)
+        let ids = editor.document.allTasksRecursive.filter { ["Two", "Three"].contains($0.text) }.map(\.id)
+        try editor.performBatch { for id in ids { try editor.deleteTask(taskID: id) } }
+        XCTAssertEqual(editor.currentText, "# a\n- [ ] One\n- [ ] Four\n")
+        try editor.undo()
+        XCTAssertEqual(editor.currentText, text)
+        XCTAssertFalse(editor.canUndo)
+        try editor.redo()
+        XCTAssertEqual(editor.currentText, "# a\n- [ ] One\n- [ ] Four\n")
+    }
+
+    func testDisplayNeighbor() {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).md")
+        let editor = ListoEditor(fileURL: url, initialText: text, autoPersist: false)
+        let tasks = editor.document.allTasksRecursive
+        XCTAssertEqual(editor.displayNeighbor(of: tasks[1].id, direction: -1), tasks[0].id)
+        XCTAssertNil(editor.displayNeighbor(of: tasks[0].id, direction: -1))
+    }
+}

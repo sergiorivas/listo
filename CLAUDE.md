@@ -480,3 +480,30 @@ Formula sandbox. The `app "Listo.app"` stanza handles the move; a
 just performed after the cask's own install phase instead of before it).
 Users now run `brew install --cask` and `brew trust --cask` instead of
 the bare/`--formula` forms.
+
+## Multi-selection with ⇧↑ / ⇧↓
+
+⇧↑/⇧↓ extend the selection from an anchor, one row of the **same level** at a
+time: start on a task and only tasks get selected, start on a subtask and only
+subtasks (`DocumentController.extendSelection`, Task-menu commands like the
+other shortcuts, disabled while a title is a live field where ⇧↑/⇧↓ select
+text). Scope follows ↑/↓ navigation (the column in Kanban, the whole document
+in Outline); subtasks may span several parents.
+
+- **State.** `selectedTaskID` stays the cursor; `multiSelectedIDs` holds the
+  whole range (empty for a single selection). Any outside assignment to
+  `selectedTaskID` (click, plain ↑/↓, Esc) collapses it — only the code that
+  builds a multi-selection sets `keepsMultiSelection` around its assignment.
+- **Actions are multi-aware at the controller, not in the views.** `indent`,
+  `outdent`, `reorder`, `split`, `move`, `moveToAdjacentSection`,
+  `setPriority`, `delete` call `targets(for:)` and run as a batch when the
+  task they were invoked on is part of the multi-selection — so the Task menu,
+  the context menus and drag & drop all got it without view changes.
+- **One undo step.** `ListoEditor.performBatch` merges the batch's history
+  entries into one (each action still logs its own event; the `undone`/
+  `redone` line names the batch's first action).
+- **Order matters.** Reorder starts from the leading edge and skips a task
+  whose neighbour is a selected one that couldn't move, so the block moves
+  together and stops at the edge. Outdent runs bottom-up (each lands right
+  after its parent, which would otherwise reverse them). Indent runs top-down.
+- Checkbox toggle and the note remain per-row. Not run in the live GUI.

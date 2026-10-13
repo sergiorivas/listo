@@ -158,6 +158,18 @@ private struct TaskCommands: Commands {
             .keyboardShortcut(.downArrow, modifiers: [])
             .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
 
+            Button(L("task.extendSelectionUp", "Ampliar selección hacia arriba")) {
+                controller?.extendSelection(direction: -1)
+            }
+            .keyboardShortcut(.upArrow, modifiers: .shift)
+            .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
+
+            Button(L("task.extendSelectionDown", "Ampliar selección hacia abajo")) {
+                controller?.extendSelection(direction: 1)
+            }
+            .keyboardShortcut(.downArrow, modifiers: .shift)
+            .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
+
             Divider()
 
             Button(L("selection.clear", "Deseleccionar")) {

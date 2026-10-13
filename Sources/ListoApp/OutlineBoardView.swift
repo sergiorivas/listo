@@ -179,7 +179,7 @@ private struct OutlineTaskNode: View {
 
     private static let maxDepth = ListoEditor.maxSubtaskDepth
     private var leadingPadding: CGFloat { CGFloat(sectionDepth) * 16 + CGFloat(subtaskDepth) * 14 }
-    private var isSelected: Bool { controller.selectedTaskID == task.id }
+    private var isSelected: Bool { controller.isSelected(task.id) }
     /// Whether the title is currently a live `TextField`. Click only
     /// selects the row (see `ownRow`'s doc comment below); this is what
     /// keeps a plain click from also dropping you into rename mode, which

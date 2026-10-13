@@ -64,6 +64,10 @@ public final class ListoEditor {
     /// Set by `commit()`, consumed by `record(_:)` once the action's event
     /// exists.
     private var pendingChange: (before: String, after: String)?
+    /// Inside `performBatch`: whether the batch has already filed its undo
+    /// entry, so further actions merge into it instead of adding their own.
+    private var isBatching = false
+    private var batchHasEntry = false
     public static let maxUndoDepth = 100
 
     public var canUndo: Bool { !undoStack.isEmpty }
@@ -151,12 +155,29 @@ public final class ListoEditor {
     /// this instead of a bare `logWriter.append`.
     private func record(_ event: LogEvent) throws -> LogEvent {
         if let change = pendingChange {
-            undoStack.append(HistoryEntry(before: change.before, after: change.after, event: event))
-            if undoStack.count > Self.maxUndoDepth { undoStack.removeFirst() }
+            if batchHasEntry, let first = undoStack.popLast() {
+                // Same batch: one entry spanning the first action's "before"
+                // to this one's "after", named after the first action.
+                undoStack.append(HistoryEntry(before: first.before, after: change.after, event: first.event))
+            } else {
+                undoStack.append(HistoryEntry(before: change.before, after: change.after, event: event))
+                if undoStack.count > Self.maxUndoDepth { undoStack.removeFirst() }
+                batchHasEntry = isBatching
+            }
             redoStack.removeAll()
             pendingChange = nil
         }
         return try logWriter.append(event)
+    }
+
+    /// Runs several actions (one per selected task) as a single undo step:
+    /// ⌘Z reverts all of them at once. Each action still logs its own event;
+    /// the `undone`/`redone` event names the batch's first action.
+    public func performBatch<T>(_ body: () throws -> T) rethrows -> T {
+        isBatching = true
+        batchHasEntry = false
+        defer { isBatching = false; batchHasEntry = false }
+        return try body()
     }
 
     // MARK: - Actions
@@ -662,6 +683,17 @@ public final class ListoEditor {
             interpretedBy: .userAction
         )
         return try record(event)
+    }
+
+    /// The sibling displayed right before (`direction: -1`) or after (`+1`)
+    /// `taskID`, in the order `reorderTask` moves through; `nil` at either
+    /// end or for an unknown task.
+    public func displayNeighbor(of taskID: UUID, direction: Int) -> UUID? {
+        guard let task = findTask(taskID), let (section, parent) = document.location(of: task) else { return nil }
+        let siblings = parent?.displaySubtasks ?? section.displayTasks
+        guard let idx = siblings.firstIndex(where: { $0.id == taskID }),
+              siblings.indices.contains(idx + direction) else { return nil }
+        return siblings[idx + direction].id
     }
 
     public func readLog() throws -> [LogEvent] {
