@@ -195,8 +195,13 @@ private struct TaskCommands: Commands {
 private struct UndoRedoCommands: Commands {
     @FocusedObject private var controller: DocumentController?
 
-    private func perform(_ selector: Selector, app: (DocumentController) -> Void) {
-        let typing = NSApp.keyWindow?.firstResponder is NSText
+    private func perform(_ selector: Selector, redo: Bool = false, app: (DocumentController) -> Void) {
+        // Only defer to a text view if it has something to undo/redo itself:
+        // a leftover field editor with an empty history must not swallow ⌘Z
+        // and leave the task history unreachable.
+        let typing = (NSApp.keyWindow?.firstResponder as? NSText).map {
+            redo ? ($0.undoManager?.canRedo ?? false) : ($0.undoManager?.canUndo ?? false)
+        } ?? false
         if let controller, controller.mode == .app, !typing {
             app(controller)
         } else {
@@ -212,7 +217,7 @@ private struct UndoRedoCommands: Commands {
             .keyboardShortcut("z", modifiers: .command)
 
             Button(L("edit.redo", "Rehacer")) {
-                perform(Selector(("redo:"))) { $0.redo() }
+                perform(Selector(("redo:")), redo: true) { $0.redo() }
             }
             .keyboardShortcut("z", modifiers: [.command, .shift])
         }
