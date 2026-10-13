@@ -434,7 +434,7 @@ final class DocumentController: ObservableObject {
     func delete(taskID: UUID) {
         let ids = targets(for: taskID)
         if ids.count > 1 {
-            if performBatch(ids, { try $0.deleteTask(taskID: $1) }) { playDeleteSoundIfNeeded() }
+            if performBatch(ids, silencing: { $0 == .taskNotFound }, { try $0.deleteTask(taskID: $1) }) { playDeleteSoundIfNeeded() }
             return
         }
         guard perform(animation: Motion.snappy, { try $0.deleteTask(taskID: taskID) }) else { return }
