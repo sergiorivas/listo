@@ -581,6 +581,13 @@ private struct TaskRow: View {
                 Label(L("task.split", "Dividir en tareas"), systemImage: "arrow.triangle.branch")
             }
             .disabled(task.subtasks.isEmpty)
+            if controller.multiSelectedIDs.contains(task.id) {
+                Button {
+                    controller.group(taskID: task.id)
+                } label: {
+                    Label(L("task.group", "Agrupar en una tarea"), systemImage: "rectangle.stack")
+                }
+            }
             if allowMove {
                 Menu {
                     ForEach(controller.document.sections, id: \.id) { s in

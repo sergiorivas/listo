@@ -517,3 +517,22 @@ row's `commitEditing`/`cancelEditing` and from `selectAdjacent`. Unlike
 `deleteEmpty` it doesn't move selection (the user already chose where to
 go), and it likewise refuses when the task has a note or subtasks. Not run in
 the live GUI.
+
+## Grouping tasks with ⌘G
+
+With two or more top-level tasks multi-selected (⇧↑/⇧↓), ⌘G (Task menu, and
+the context menu on a selected row) merges them into one task whose subtasks
+are the originals (`ListoEditor.groupTasks`, the inverse of `splitTask`).
+
+- **Name** = longest common prefix of whole words, trailing separators
+  (`>`, `:`, `-`) trimmed, so `Parent > A` / `Parent > B` regroups as
+  `Parent`; no shared prefix → `Grouped Task`, and the controller then puts
+  the new row straight into title editing so it can be renamed.
+- Subtasks lose the prefix (a task that *is* the prefix keeps its full
+  text), keep their own state and priority. The group sits where the first
+  task (file order) was; it is done only if all members were; no priority.
+- **Refuses** (`cannotGroup`, `groupedTaskHasContent`) tasks from different
+  sections, subtasks, or tasks with a note/subtasks — a subtask can't hold
+  either, and dropping content silently is worse than an error alert.
+- One undo step, one `grouped` log event (`text` = group name). Free Mode
+  doesn't detect it. Not run in the live GUI.

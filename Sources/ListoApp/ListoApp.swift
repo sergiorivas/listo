@@ -123,6 +123,14 @@ private struct TaskCommands: Commands {
             .keyboardShortcut("t", modifiers: .command)
             .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
 
+            Button(L("task.group", "Agrupar en una tarea")) {
+                if let controller, let id = controller.selectedTaskID {
+                    controller.group(taskID: id)
+                }
+            }
+            .keyboardShortcut("g", modifiers: .command)
+            .disabled(controller?.mode != .app || (controller?.multiSelectedIDs.count ?? 0) < 2 || isEditingSelectedTask)
+
             // Kanban only: columns are what "previous/next section" means
             // there. Also disabled while editing, where ⌘←/⌘→ are the text
             // field's own "jump to start/end of line".

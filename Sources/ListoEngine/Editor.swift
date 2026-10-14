@@ -10,6 +10,10 @@ public enum ListoEditorError: Error, Equatable {
     case noSiblingInDirection
     case noSectionInDirection
     case noSubtasksToSplit
+    /// Grouping needs two or more top-level tasks from one section.
+    case cannotGroup
+    /// A task to group has a note or subtasks, which a subtask can't hold.
+    case groupedTaskHasContent
 }
 
 /// Implements every "Modo App" action from spec §03. Each method performs a
@@ -574,6 +578,87 @@ public final class ListoEditor {
             interpretedBy: .userAction
         )
         return try record(event)
+    }
+
+    /// Name given to a group whose tasks share no common prefix.
+    public static let defaultGroupName = "Grouped Task"
+
+    /// Merges two or more top-level tasks of one section into a single task
+    /// whose subtasks are the originals — the ⌘G action, inverse of
+    /// `splitTask`. The group takes the place of the first of them (file
+    /// order) and is named after their common prefix (whole words, trailing
+    /// separators like `>` or `:` dropped), else `defaultGroupName`; each
+    /// subtask keeps its state and priority and loses that prefix. Tasks
+    /// carrying a note or subtasks are refused rather than losing content.
+    @discardableResult
+    public func groupTasks(taskIDs: [UUID]) throws -> LogEvent {
+        let found = taskIDs.compactMap { findTask($0) }
+        guard found.count == taskIDs.count, Set(taskIDs).count == taskIDs.count else {
+            throw ListoEditorError.taskNotFound
+        }
+        guard found.count >= 2 else { throw ListoEditorError.cannotGroup }
+        let tasks = found.sorted { $0.lineRange!.lowerBound < $1.lineRange!.lowerBound }
+        guard let (section, parent) = document.location(of: tasks[0]), parent == nil else {
+            throw ListoEditorError.cannotGroup
+        }
+        for task in tasks {
+            guard let location = document.location(of: task), location.parent == nil,
+                  location.section.id == section.id else { throw ListoEditorError.cannotGroup }
+            guard task.note == nil, task.subtasks.isEmpty else { throw ListoEditorError.groupedTaskHasContent }
+        }
+
+        let prefix = Self.commonPrefix(of: tasks.map(\.text))
+        let name = prefix ?? Self.defaultGroupName
+        let (indent, _) = splitIndent(lines[tasks[0].lineRange!.lowerBound])
+        let groupState: TaskState = tasks.allSatisfy { $0.state == .done } ? .done : .open
+
+        var newLines = [ListoSerializer.taskLine(indent: indent, state: groupState, text: name, priority: .none)]
+        for task in tasks {
+            var text = task.text
+            if let prefix {
+                let rest = String(text.dropFirst(prefix.count))
+                    .drop { $0.isWhitespace || ">:-–—".contains($0) }
+                if !rest.isEmpty { text = String(rest) }
+            }
+            newLines.append(ListoSerializer.taskLine(indent: indent + "  ", state: task.state, text: text, priority: task.priority))
+        }
+
+        let start = tasks[0].lineRange!.lowerBound
+        let logText = name
+        let sectionPath = document.path(to: section) ?? [section.title]
+        // Remove from the bottom so earlier ranges stay valid, then put the
+        // group where the first task was.
+        for task in tasks.reversed() { lines.removeSubrange(fullRange(of: task)) }
+        lines.insert(contentsOf: newLines, at: start)
+        try commit(trackingLine: start)
+
+        let event = LogEvent(
+            file: fileURL.lastPathComponent,
+            event: .grouped,
+            taskID: taskAt(line: start)?.shortID ?? "t_????",
+            sectionPath: .path(sectionPath),
+            text: logText,
+            source: .app,
+            interpretedBy: .userAction
+        )
+        return try record(event)
+    }
+
+    /// The longest run of leading whole words shared by every text, with
+    /// trailing separators trimmed; `nil` when there is none.
+    static func commonPrefix(of texts: [String]) -> String? {
+        let words = texts.map { $0.split(separator: " ", omittingEmptySubsequences: true).map(String.init) }
+        guard var shared = words.first else { return nil }
+        for other in words.dropFirst() {
+            var n = 0
+            while n < shared.count, n < other.count, shared[n] == other[n] { n += 1 }
+            shared = Array(shared.prefix(n))
+        }
+        while let last = shared.last, last.allSatisfy({ ">:-–—,".contains($0) }) { shared.removeLast() }
+        guard !shared.isEmpty else { return nil }
+        var joined = shared.joined(separator: " ")
+        while let last = joined.last, ":,-–—".contains(last) { joined.removeLast() }
+        return joined.isEmpty ? nil : joined
     }
 
     /// Moves a top-level task to another top-level section (drag & drop, or

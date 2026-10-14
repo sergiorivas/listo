@@ -148,6 +148,27 @@ final class EditorTests: XCTestCase {
         XCTAssertThrowsError(try editor.splitTask(taskID: editor.document.sections[0].tasks[2].id))
     }
 
+    func testGroupUsesCommonPrefixAsName() throws {
+        let editor = makeEditor("# ahora\n- [ ] Buy milk !!\n- [ ] Other\n- [x] Buy eggs\n")
+        let t = editor.document.sections[0].tasks
+        let event = try editor.groupTasks(taskIDs: [t[2].id, t[0].id])
+        XCTAssertEqual(event.event, .grouped)
+        XCTAssertEqual(editor.currentText, "# ahora\n- [ ] Buy\n  - [ ] milk !!\n  - [x] eggs\n- [ ] Other\n")
+    }
+
+    func testGroupWithoutCommonPrefixIsGroupedTask() throws {
+        let editor = makeEditor("# ahora\n- [ ] A\n- [ ] B\n")
+        let t = editor.document.sections[0].tasks
+        try editor.groupTasks(taskIDs: [t[0].id, t[1].id])
+        XCTAssertEqual(editor.currentText, "# ahora\n- [ ] Grouped Task\n  - [ ] A\n  - [ ] B\n")
+    }
+
+    func testGroupRefusesTasksWithSubtasks() throws {
+        let editor = makeEditor("# ahora\n- [ ] A\n  - [ ] S\n- [ ] B\n")
+        let t = editor.document.sections[0].tasks
+        XCTAssertThrowsError(try editor.groupTasks(taskIDs: [t[0].id, t[1].id]))
+    }
+
     func testOutdentReversesIndent() throws {
         let editor = makeEditor("# ahora\n- [ ] First\n- [ ] Second\n")
         let secondID = editor.document.sections[0].tasks[1].id

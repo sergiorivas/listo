@@ -396,6 +396,25 @@ final class DocumentController: ObservableObject {
         }
     }
 
+    /// ⌘G — merges the multi-selected top-level tasks into one task with
+    /// them as subtasks. The group is selected afterwards, and put straight
+    /// into title editing when it got the placeholder name so it can be
+    /// renamed right away.
+    func group(taskID: UUID) {
+        let ids = targets(for: taskID)
+        guard ids.count > 1 else { return }
+        guard perform(animation: Motion.snappy, flash: true, followSelectionFrom: taskID, { try $0.groupTasks(taskIDs: ids) }),
+              let groupID = editor.lastActionTaskID else { return }
+        keepsMultiSelection = true
+        multiSelectedIDs = []
+        selectedTaskID = groupID
+        keepsMultiSelection = false
+        selectionAnchorID = nil
+        if document.allTasksRecursive.first(where: { $0.id == groupID })?.text == ListoEditor.defaultGroupName {
+            editingTaskID = groupID
+        }
+    }
+
     /// ⌘← / ⌘→ in Kanban — `direction` is -1 (previous column) or +1 (next).
     /// First/last column, or a subtask, is an expected boundary: silent no-op.
     func moveToAdjacentSection(taskID: UUID, direction: Int) {

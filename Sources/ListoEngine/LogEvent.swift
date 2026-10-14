@@ -14,6 +14,9 @@ public struct LogEvent: Codable, Equatable {
         /// A task with subtasks was replaced by one top-level task per
         /// subtask (`Parent > Sub`). `text` is the original task's text.
         case split
+        /// Several top-level tasks were merged into one task whose subtasks
+        /// they became. `text` is the new group's name.
+        case grouped
         case priorityChanged = "priority_changed"
         case noteUpdated = "note_updated"
         case deleted
