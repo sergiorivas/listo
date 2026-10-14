@@ -503,6 +503,7 @@ private struct OutlineTaskNode: View {
             text = task.text
         }
         controller.editingTaskID = nil
+        if trimmed.isEmpty { controller.discardIfBlank(taskID: task.id) }
         return renamed
     }
 
@@ -510,6 +511,7 @@ private struct OutlineTaskNode: View {
         guard isEditing else { return }
         text = task.text
         controller.editingTaskID = nil
+        controller.discardIfBlank(taskID: task.id)
     }
 
     /// Return: commit whatever was typed, then insert a new empty sibling

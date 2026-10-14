@@ -462,6 +462,11 @@ final class DocumentController: ObservableObject {
     func selectAdjacent(direction: Int, keepEditing: Bool) {
         guard let currentID = selectedTaskID,
               let newID = adjacentTaskID(to: currentID, direction: direction) else { return }
+        if keepEditing, discardIfBlank(taskID: currentID) {
+            // The delete can re-id the neighbor (content-derived ids) —
+            // only follow it if it still resolves.
+            guard document.allTasksRecursive.contains(where: { $0.id == newID }) else { return }
+        }
         selectedTaskID = newID
         if keepEditing { editingTaskID = newID }
     }
@@ -586,6 +591,24 @@ final class DocumentController: ObservableObject {
         return orderedIDs.indices.contains(newIdx) ? orderedIDs[newIdx] : nil
     }
 
+    /// No blank tasks survive losing focus: a task/subtask may be empty
+    /// while it is being edited, but is deleted as soon as editing moves
+    /// elsewhere. Unlike `deleteEmpty` (an explicit Backspace) this leaves
+    /// selection and edit focus where the user put them, and — same guard —
+    /// never removes a task that has a note or subtasks.
+    @discardableResult
+    func discardIfBlank(taskID: UUID) -> Bool {
+        guard let task = document.allTasksRecursive.first(where: { $0.id == taskID }),
+              task.text.trimmingCharacters(in: .whitespaces).isEmpty,
+              task.subtasks.isEmpty,
+              task.note == nil
+        else { return false }
+        guard perform(animation: Motion.snappy, { try $0.deleteTask(taskID: taskID) }) else { return false }
+        if selectedTaskID == taskID { selectedTaskID = nil }
+        if editingTaskID == taskID { editingTaskID = nil }
+        return true
+    }
+
     /// Delete/Backspace on a task or subtask whose title is empty removes it
     /// — the caller has already checked the title (the live field while
     /// editing, the task's own text when merely selected). Selection (and
@@ -596,7 +619,6 @@ final class DocumentController: ObservableObject {
     /// Refuses (returns `false`) when the task still carries a note or
     /// subtasks: `deleteTask` removes the whole block, so an empty title
     /// isn't enough evidence the user means to drop that content too.
-    @discardableResult
     func deleteEmpty(taskID: UUID, keepEditing: Bool) -> Bool {
         guard let task = document.allTasksRecursive.first(where: { $0.id == taskID }),
               task.subtasks.isEmpty,

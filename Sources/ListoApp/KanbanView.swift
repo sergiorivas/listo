@@ -718,6 +718,7 @@ private struct TaskRow: View {
             text = task.text
         }
         controller.editingTaskID = nil
+        if trimmed.isEmpty { controller.discardIfBlank(taskID: task.id) }
         return renamed
     }
 
@@ -725,6 +726,7 @@ private struct TaskRow: View {
         guard isEditing else { return }
         text = task.text
         controller.editingTaskID = nil
+        controller.discardIfBlank(taskID: task.id)
     }
 
     /// Return: commit whatever was typed, then insert a new empty sibling

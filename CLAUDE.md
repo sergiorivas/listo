@@ -507,3 +507,13 @@ in Outline); subtasks may span several parents.
   together and stops at the edge. Outdent runs bottom-up (each lands right
   after its parent, which would otherwise reverse them). Indent runs top-down.
 - Checkbox toggle and the note remain per-row. Not run in the live GUI.
+
+## No blank tasks survive losing focus
+
+A task/subtask may be empty while its title is a live field, but is deleted
+as soon as editing moves elsewhere (click away, ↑/↓ while typing, Return or
+Esc on an empty title): `DocumentController.discardIfBlank`, called from each
+row's `commitEditing`/`cancelEditing` and from `selectAdjacent`. Unlike
+`deleteEmpty` it doesn't move selection (the user already chose where to
+go), and it likewise refuses when the task has a note or subtasks. Not run in
+the live GUI.
