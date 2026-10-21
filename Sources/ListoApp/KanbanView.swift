@@ -53,53 +53,6 @@ struct KanbanView: View {
     }
 }
 
-/// Sits next to `SectionDeleteButton` in a section/column header — adds a
-/// new, empty task at the end of that section and immediately focuses it
-/// for typing (`DocumentController.addTaskAndEdit`). Replaces the
-/// always-visible "new task…" field each section used to end with; Return
-/// from an existing row (`insertSiblingAndEdit`) is the other way in.
-private struct SectionAddTaskButton: View {
-    let onAdd: () -> Void
-
-    var body: some View {
-        Button(action: onAdd) {
-            Image(systemName: "plus")
-                .foregroundStyle(.secondary)
-        }
-        .buttonStyle(.plain)
-        .help(L("section.addTask", "Agregar tarea"))
-    }
-}
-
-/// A single trash button for deleting a section — deliberately not a
-/// `Menu`: with only one action, a `Menu` just adds a second, redundant
-/// disclosure affordance next to the icon. Deleting a section takes its
-/// tasks and any nested subsections with it, so it confirms first.
-private struct SectionDeleteButton: View {
-    let onDelete: () -> Void
-    @State private var showConfirm = false
-
-    var body: some View {
-        Button {
-            showConfirm = true
-        } label: {
-            Image(systemName: "trash")
-                .foregroundStyle(.secondary)
-        }
-        .buttonStyle(.plain)
-        .help(L("section.delete", "Eliminar sección"))
-        .confirmationDialog(
-            L("section.delete.confirm.title", "¿Eliminar esta sección?"),
-            isPresented: $showConfirm,
-            titleVisibility: .visible
-        ) {
-            Button(L("task.delete", "Eliminar"), role: .destructive, action: onDelete)
-        } message: {
-            Text(L("section.delete.confirm.message", "Se eliminan también sus tareas y subsecciones."))
-        }
-    }
-}
-
 private struct KanbanColumn: View {
     @ObservedObject var controller: DocumentController
     @ObservedObject private var settings = AppSettings.shared
@@ -199,7 +152,7 @@ private struct KanbanColumn: View {
             .lineLimit(1)
             .onAppear { titleText = section.title }
 
-            SectionCountBadge(count: section.taskCount)
+            SectionCountBadge(count: controller.filter.count(in: section))
 
             Spacer(minLength: 0)
 
@@ -217,7 +170,7 @@ private struct KanbanColumn: View {
     private var collapsedStrip: some View {
         VStack(spacing: 8) {
             collapseButton
-            SectionCountBadge(count: section.taskCount)
+            SectionCountBadge(count: controller.filter.count(in: section))
                 .fixedSize()
             GeometryReader { geo in
                 let lineHeight = geo.size.width
@@ -254,7 +207,7 @@ private struct KanbanColumn: View {
     private var taskList: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 6) {
-                ForEach(section.displayTasks, id: \.id) { task in
+                ForEach(controller.filter.visible(section.displayTasks), id: \.id) { task in
                     TaskChip(controller: controller, task: task)
                         .transition(Motion.rowTransition)
                 }
@@ -323,14 +276,14 @@ private struct KanbanSubgroup: View {
                 .foregroundStyle(.secondary)
                 .onAppear { titleText = section.title }
 
-                SectionCountBadge(count: section.taskCount)
+                SectionCountBadge(count: controller.filter.count(in: section))
 
                 Spacer(minLength: 0)
 
                 SectionAddTaskButton { controller.addTaskAndEdit(toSectionID: section.id) }
                 SectionDeleteButton { controller.deleteSection(sectionID: section.id) }
             }
-            ForEach(section.displayTasks, id: \.id) { task in
+            ForEach(controller.filter.visible(section.displayTasks), id: \.id) { task in
                 TaskChip(controller: controller, task: task)
                     .transition(Motion.rowTransition)
             }
@@ -404,6 +357,9 @@ private struct TaskRow: View {
     /// only shared controller state survives that swap to keep the new row
     /// in edit mode too.
     private var isEditing: Bool { controller.editingTaskID == task.id }
+    private var editing: TitleEditing {
+        TitleEditing(controller: controller, task: task, isEditing: isEditing, text: $text)
+    }
     /// Only a top-level task can carry a note — Listo's tree is
     /// deliberately just task + subtask (see `ListoEditor.setNote`).
     private var canHaveNote: Bool { depth == 0 }
@@ -414,7 +370,7 @@ private struct TaskRow: View {
 
             if !task.subtasks.isEmpty {
                 VStack(alignment: .leading, spacing: 3) {
-                    ForEach(task.displaySubtasks, id: \.id) { sub in
+                    ForEach(controller.filter.visibleSubtasks(of: task), id: \.id) { sub in
                         TaskRow(controller: controller, task: sub, depth: depth + 1, allowMove: false, onEditNote: onEditNote)
                             .transition(Motion.rowTransition)
                     }
@@ -452,6 +408,7 @@ private struct TaskRow: View {
                 titleField
 
                 PriorityBadge(priority: task.priority, dimmed: task.state == .done)
+                TaskMetaBadges(controller: controller, task: task)
 
                 if canHaveNote, task.note == nil {
                     Button {
@@ -539,7 +496,7 @@ private struct TaskRow: View {
         .onChange(of: isEditing) { _, editing in
             if editing { text = task.text }
         }
-        .draggable(task.id.uuidString)
+        .taskDragAndDrop(controller: controller, task: task, showsSubtasks: !controller.filter.visibleSubtasks(of: task).isEmpty)
         .contextMenu {
             if canHaveNote {
                 Button {
@@ -599,6 +556,7 @@ private struct TaskRow: View {
             }
             Divider()
             PriorityMenu(controller: controller, task: task)
+            DueMenu(controller: controller, task: task)
             Divider()
             Button(role: .destructive) {
                 controller.delete(taskID: task.id)
@@ -640,18 +598,18 @@ private struct TaskRow: View {
                 .onChange(of: isTextFieldFocused) { _, focused in
                     // Clicking away (another row, empty space, another
                     // control) commits and stops editing, no chained action.
-                    if !focused { commitEditing() }
+                    if !focused { editing.commit() }
                 }
                 .onKeyPress { press in
                     switch press.key {
                     case .escape:
-                        cancelEditing()
+                        editing.cancel()
                         return .handled
                     case .return:
-                        handleReturn()
+                        editing.handleReturn()
                         return .handled
                     case .tab:
-                        handleTab(outdent: press.modifiers.contains(.shift))
+                        editing.handleTab(outdent: press.modifiers.contains(.shift))
                         return .handled
                     case KeyEquivalent("\u{19}"):
                         // Shift+Tab: confirmed by direct diagnostic —
@@ -659,7 +617,7 @@ private struct TaskRow: View {
                         // control character (0x19), not as `.tab` plus a
                         // shift modifier, so the `.tab` case above never
                         // matches it at all.
-                        handleTab(outdent: true)
+                        editing.handleTab(outdent: true)
                         return .handled
                     case .delete, .deleteForward:
                         // Only on an already-empty field — otherwise Delete
@@ -669,17 +627,17 @@ private struct TaskRow: View {
                         guard text.isEmpty, press.phase == .down else { return .ignored }
                         return controller.deleteEmpty(taskID: task.id, keepEditing: true) ? .handled : .ignored
                     case .upArrow:
-                        handleVerticalNav(direction: -1)
+                        editing.handleVerticalNav(direction: -1)
                         return .handled
                     case .downArrow:
-                        handleVerticalNav(direction: 1)
+                        editing.handleVerticalNav(direction: 1)
                         return .handled
                     default:
                         return .ignored
                     }
                 }
         } else {
-            Text(task.text)
+            Text(task.displayTitle)
                 .font(depth == 0 ? settings.font(.body) : settings.font(.caption))
                 .strikethrough(task.state == .done)
                 .foregroundStyle(task.state == .done ? .secondary : .primary)
@@ -699,94 +657,5 @@ private struct TaskRow: View {
         text = task.text
         controller.selectedTaskID = task.id
         controller.editingTaskID = task.id
-    }
-
-    /// Commits the title if changed, without chaining any further action —
-    /// used when editing ends because focus just left the field (a click
-    /// elsewhere). Returns whether it renamed.
-    ///
-    /// Idempotency guard: ending edit mode (clearing `editingTaskID`) can
-    /// itself cause `isTextFieldFocused` to flip to false as the field
-    /// leaves the view tree, which re-fires the `onChange` above and would
-    /// otherwise call this a second time — using this same (by-then-stale,
-    /// already-renamed-away) `task.id` and blowing up with "task not
-    /// found". Guarding on `isEditing` catches that: once `editingTaskID`
-    /// has moved on (cleared here, or moved to a different row by
-    /// `handleReturn`/`handleTab`), `isEditing` for *this* row is already
-    /// false.
-    @discardableResult
-    private func commitEditing() -> Bool {
-        guard isEditing else { return false }
-        let trimmed = text.trimmingCharacters(in: .whitespaces)
-        let renamed = !trimmed.isEmpty && trimmed != task.text
-        if renamed {
-            controller.rename(taskID: task.id, newText: trimmed)
-        } else {
-            text = task.text
-        }
-        controller.editingTaskID = nil
-        if trimmed.isEmpty { controller.discardIfBlank(taskID: task.id) }
-        return renamed
-    }
-
-    private func cancelEditing() {
-        guard isEditing else { return }
-        text = task.text
-        controller.editingTaskID = nil
-        controller.discardIfBlank(taskID: task.id)
-    }
-
-    /// Return: commit whatever was typed, then insert a new empty sibling
-    /// (same level — a subtask begets a subtask) right after it and move
-    /// edit focus straight there, so typing can continue without
-    /// re-clicking. An empty title breaks the chain instead of piling up
-    /// blank tasks — same as clicking away.
-    private func handleReturn() {
-        let trimmed = text.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else {
-            cancelEditing()
-            return
-        }
-        if trimmed != task.text {
-            controller.rename(taskID: task.id, newText: trimmed)
-        }
-        controller.insertSiblingAndEdit(afterTaskID: controller.editingTaskID ?? task.id)
-        // The sibling just inserted is blank, and when *this* row was itself
-        // a blank one its id is the very id the new blank gets — so SwiftUI
-        // keeps this view (and its `text`) for it, and neither `.onAppear`
-        // nor `.onChange(of: isEditing)` fires (editing goes X -> X within
-        // one event). Clear the field by hand or it shows what was just typed.
-        text = ""
-    }
-
-    /// Tab/⇧Tab: commit whatever was typed, then indent/outdent — following
-    /// onto whatever new id the commit gave the task, via `controller.
-    /// editingTaskID` (`perform(followSelectionFrom:)` keeps it current) —
-    /// and stay in edit mode on the row that results, instead of dropping
-    /// back to merely-selected like a stray Tab keystroke used to.
-    private func handleTab(outdent: Bool) {
-        let trimmed = text.trimmingCharacters(in: .whitespaces)
-        if !trimmed.isEmpty, trimmed != task.text {
-            controller.rename(taskID: task.id, newText: trimmed)
-        }
-        let anchorID = controller.editingTaskID ?? task.id
-        if outdent {
-            controller.outdent(taskID: anchorID)
-        } else {
-            controller.indent(taskID: anchorID)
-        }
-    }
-
-    /// ↑/↓: commit whatever was typed, then move both selection and edit
-    /// focus to the previous/next task — reads `controller.selectedTaskID`
-    /// itself (already the post-rename id, via the same `perform(
-    /// followSelectionFrom:)` following used everywhere else here) rather
-    /// than needing an `anchorID` like `handleTab` does.
-    private func handleVerticalNav(direction: Int) {
-        let trimmed = text.trimmingCharacters(in: .whitespaces)
-        if !trimmed.isEmpty, trimmed != task.text {
-            controller.rename(taskID: task.id, newText: trimmed)
-        }
-        controller.selectAdjacent(direction: direction, keepEditing: true)
     }
 }

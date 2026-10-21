@@ -536,3 +536,101 @@ are the originals (`ListoEditor.groupTasks`, the inverse of `splitTask`).
   either, and dropping content silently is worse than an error alert.
 - One undo step, one `grouped` log event (`text` = group name). Free Mode
   doesn't detect it. Not run in the live GUI.
+
+## Due dates and tags (`@2026-11-03`, `#work`)
+
+Written in the task title and **left in `ListoTask.text`**, unlike the
+priority marker, which is split off. Splitting them off was rejected: every
+writer (rename, toggle, split, group, the differ, the log) would have to
+carry two more fields the way it carries priority. `TaskMetadata` instead
+*reads* them back out of the text (`ListoTask.dueDate` / `tags` /
+`displayTitle`), so ids, undo, Free Mode and the log work unchanged and a
+hand-typed token is already a due date.
+
+- A due date is `@YYYY-MM-DD`, a real calendar day, anywhere in the title;
+  only the first counts. A tag is `#` + a letter + letters/digits/`_`/`-`
+  (`#123`, `C#` and a bare `#` stay text). The views show a badge/chip
+  instead of the raw token (`TaskMetaBadges`); the title field and Free Mode
+  show it raw. A title made only of tokens keeps showing them.
+- The context menu's Due date submenu rewrites the title through
+  `TaskMetadata.settingDue` + `rename`, so the priority marker is kept.
+  Today/Tomorrow/In a week/Clear only; a date picker was not built.
+- **Not built: sorting by due date.** Views sort by priority and ⌘↑/⌘↓
+  swap only within a priority; a second sort key would change what "same
+  position group" means for reorder, drop and indent. The date is shown,
+  highlighted when overdue (a done task is never red), and filterable.
+
+## Search and filter (⌘F)
+
+`TaskFilter` (engine, pure): text (all words, case/diacritic-insensitive,
+searches notes too), open/done, minimum priority, tag, due bucket.
+`DocumentController.filter` is display-only — the file and every editor
+action still see all tasks. A top-level task shows if it or a subtask
+matches; a matching parent shows all its subtasks, a non-matching one only
+the matching subtasks. Section count badges count what shows. ↑/↓ and
+⇧↑/⇧↓ walk the *filtered* order (`TaskFilter.displayOrder`), so they never
+land on a hidden row. Clicking a tag chip filters by it. A consequence:
+"No date" also keeps a dated parent that has undated subtasks. Not run in
+the live GUI.
+
+## Drag onto a task: reorder and nest
+
+Dropping on a task row (`TaskDropTarget`, a `DropDelegate`) moves the
+dragged one next to it or under it — `ListoEditor.moveTask(relativeTo:
+placement:)`: `.before` / `.after` / `.asSubtask`. Dropping on a column or
+heading still moves to the end of that section.
+
+- **`DropRule` decides what is offered**, from the pointer's position in the
+  row: top/bottom third = before/after, middle = nest. It refuses drops that
+  would have no visible effect (views sort by priority, so reordering
+  between *different* priorities in one list is invisible — crossing a
+  section or parent is not), nesting a task that has a note or subtasks, a
+  top-level task between subtasks, and a task onto itself/its own subtask.
+  The bottom of a row with visible subtasks means "inside". The engine
+  enforces the structural rules too (`invalidMove`, `taskHasContent`).
+- The dragged id is kept in `DocumentController.draggingTaskID` (set by
+  `.onDrag`), because the pasteboard payload only loads asynchronously on
+  drop and the hover indicator needs it earlier. This replaced
+  `.draggable(String)`; in Outline the drag source moved from the top-level
+  block to each row, so subtasks are draggable there as in Kanban.
+- One undo step. Logged as `reordered` (same section and parent),
+  `moved_section` (across sections) or `reindented` (parent changed).
+- Single task only: a multi-selection is not dragged as a batch. The
+  engine and `DropRule` are covered by tests; the SwiftUI hover/drop
+  behaviour was **not run in the live GUI**.
+
+## External file changes
+
+`DocumentController.diskBaseline` is what the file held when this window
+last read or saved it. When the app or window becomes active,
+`checkForExternalChange` compares disk, baseline and the in-memory text
+(`ExternalChange.resolve`): file unchanged → nothing; our own save landed →
+move the baseline; only the file changed → reload silently (drops undo
+history and Free Mode's diff baseline, like any outside edit); both changed
+→ alert (Reload / Keep my version). No log entry is written for a reload —
+interpreting it like a Free Mode save would invite an unasked LLM call.
+`NSDocument.fileModificationDate` is refreshed afterwards so Cocoa's own
+"modified by another application" prompt doesn't fire for a change already
+handled. Not verified against Cocoa's own revert behaviour in a live run.
+
+## Outdent absorbing following siblings (opt-in)
+
+Settings ▸ "When outdenting, following subtasks become its subtasks"
+(`outdentAbsorbsSiblings`, off by default): outdent keeps the task where it
+is in the file and just dedents it, so the subtasks after it end up under
+it (`outdentTask(absorbingFollowingSiblings:)`). Single-task outdent only —
+the multi-selection batch runs bottom-up expecting the default semantics.
+
+## Code layout after the split
+
+`Editor.swift` (state, history, internals) + `Editor+Tasks.swift` (add,
+toggle, rename, priority, note, insert) + `Editor+Structure.swift` (indent,
+outdent, reorder, split, group, move, delete); members the extensions
+touch lost `private` (internal). `DocumentController` gained
+`+Selection` (navigation, multi-selection, batches), `+DoneMove`,
+`+External`, and `SoundPlayer`. `TitleEditing` holds the title-field flow
+(commit/cancel/Return/Tab/↑↓) both row views used to duplicate, and
+`SectionButtons` the add/delete section buttons. The app target now has a
+test target (`ListoAppTests`, `@testable import ListoApp`) covering the
+controller; `saveIfPossible` uses `NSApp?` because there is no NSApplication
+under XCTest.

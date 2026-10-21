@@ -198,6 +198,16 @@ final class AppSettings: ObservableObject {
             reloadToken &+= 1
         }
     }
+    /// Outdenting a subtask keeps it in place and turns the siblings after
+    /// it into its own subtasks (Workflowy-style), instead of moving it
+    /// below its former parent — see `ListoEditor.outdentTask`. Off by
+    /// default: it changes which task the later siblings belong to.
+    @Published var outdentAbsorbsSiblings: Bool {
+        didSet {
+            UserDefaults.standard.set(outdentAbsorbsSiblings, forKey: Keys.outdentAbsorbsSiblings)
+            reloadToken &+= 1
+        }
+    }
     /// Kanban's first/last column (by position, not by title — see
     /// `KanbanColumn`) can carry its own background tint, since those slots
     /// conventionally mean something specific (first: Today/Focus; last:
@@ -242,6 +252,7 @@ final class AppSettings: ObservableObject {
         static let doneMoveDelaySeconds = "listo.settings.doneMoveDelaySeconds"
         static let completionSoundEnabled = "listo.settings.completionSoundEnabled"
         static let deleteSoundEnabled = "listo.settings.deleteSoundEnabled"
+        static let outdentAbsorbsSiblings = "listo.settings.outdentAbsorbsSiblings"
         static let firstSectionBackgroundEnabled = "listo.settings.firstSectionBackgroundEnabled"
         static let firstSectionBackgroundColor = "listo.settings.firstSectionBackgroundColor"
         static let lastSectionBackgroundEnabled = "listo.settings.lastSectionBackgroundEnabled"
@@ -262,6 +273,7 @@ final class AppSettings: ObservableObject {
         doneMoveDelaySeconds = storedDelay ?? Self.defaultDoneMoveDelaySeconds
         completionSoundEnabled = defaults.object(forKey: Keys.completionSoundEnabled) as? Bool ?? false
         deleteSoundEnabled = defaults.object(forKey: Keys.deleteSoundEnabled) as? Bool ?? true
+        outdentAbsorbsSiblings = defaults.object(forKey: Keys.outdentAbsorbsSiblings) as? Bool ?? false
         firstSectionBackgroundEnabled = defaults.object(forKey: Keys.firstSectionBackgroundEnabled) as? Bool ?? true
         firstSectionBackgroundColor = defaults.string(forKey: Keys.firstSectionBackgroundColor)
             .flatMap(Color.init(hex:)) ?? Self.defaultFirstSectionBackground

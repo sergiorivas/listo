@@ -413,3 +413,46 @@ final class EditorTests: XCTestCase {
         XCTAssertTrue(onDisk.contains("- [x] Task A"))
     }
 }
+
+final class OutdentAbsorbTests: XCTestCase {
+    private func makeEditor(_ text: String) -> ListoEditor {
+        ListoEditor(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent("absorb-\(UUID().uuidString).md"), initialText: text, autoPersist: false)
+    }
+
+    private let text = "# Todo\n\n- [ ] A\n  - [ ] B\n  - [ ] C\n  - [ ] D\n"
+
+    func testDefaultOutdentMovesTaskBelowParent() throws {
+        let editor = makeEditor(text)
+        let c = editor.document.allTasksRecursive.first { $0.text == "C" }!
+        try editor.outdentTask(taskID: c.id)
+        let tasks = editor.document.sections[0].tasks
+        XCTAssertEqual(tasks.map(\.text), ["A", "C"])
+        XCTAssertEqual(tasks[0].subtasks.map(\.text), ["B", "D"])
+    }
+
+    func testAbsorbingOutdentKeepsPlaceAndAdoptsFollowingSiblings() throws {
+        let editor = makeEditor(text)
+        let c = editor.document.allTasksRecursive.first { $0.text == "C" }!
+        try editor.outdentTask(taskID: c.id, absorbingFollowingSiblings: true)
+        let tasks = editor.document.sections[0].tasks
+        XCTAssertEqual(tasks.map(\.text), ["A", "C"])
+        XCTAssertEqual(tasks[0].subtasks.map(\.text), ["B"])
+        XCTAssertEqual(tasks[1].subtasks.map(\.text), ["D"])
+        XCTAssertEqual(editor.lastActionTaskID, tasks[1].id)
+    }
+
+    func testAbsorbingOutdentOfLastSubtaskMatchesDefault() throws {
+        let a = makeEditor(text), b = makeEditor(text)
+        try a.outdentTask(taskID: a.document.allTasksRecursive.first { $0.text == "D" }!.id)
+        try b.outdentTask(taskID: b.document.allTasksRecursive.first { $0.text == "D" }!.id, absorbingFollowingSiblings: true)
+        XCTAssertEqual(a.currentText, b.currentText)
+    }
+
+    func testAbsorbingOutdentUndoes() throws {
+        let editor = makeEditor(text)
+        let c = editor.document.allTasksRecursive.first { $0.text == "C" }!
+        try editor.outdentTask(taskID: c.id, absorbingFollowingSiblings: true)
+        _ = try editor.undo()
+        XCTAssertEqual(editor.currentText, text)
+    }
+}

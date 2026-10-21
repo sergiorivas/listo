@@ -26,5 +26,10 @@ let package = Package(
             dependencies: ["ListoEngine"],
             path: "Tests/ListoEngineTests"
         ),
+        .testTarget(
+            name: "ListoAppTests",
+            dependencies: ["ListoApp", "ListoEngine"],
+            path: "Tests/ListoAppTests"
+        ),
     ]
 )

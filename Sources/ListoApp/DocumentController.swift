@@ -29,7 +29,7 @@ import ListoEngine
 /// there is exactly one writer and immediate persistence, without the race.
 @MainActor
 final class DocumentController: ObservableObject {
-    @Published private(set) var document: ListoDocument
+    @Published internal(set) var document: ListoDocument
     @Published var mode: EditMode = .app {
         didSet { modeChanged(from: oldValue) }
     }
@@ -54,9 +54,9 @@ final class DocumentController: ObservableObject {
     /// Every selected task when ⇧↑/⇧↓ extended the selection past one row
     /// (cursor and anchor included); empty for a plain single selection.
     /// All of one level: tasks only, or subtasks only.
-    @Published private(set) var multiSelectedIDs: Set<UUID> = []
-    private var selectionAnchorID: UUID?
-    private var keepsMultiSelection = false
+    @Published internal(set) var multiSelectedIDs: Set<UUID> = []
+    var selectionAnchorID: UUID?
+    var keepsMultiSelection = false
     /// The task whose title is currently a live text field, à la Workflowy —
     /// distinct from `selectedTaskID` (a row can be selected without being
     /// mid-edit). Kept here, not as row-local `@State`, because Return/Tab/
@@ -65,6 +65,13 @@ final class DocumentController: ObservableObject {
     /// that replaces this one, where per-row `@State` would just be
     /// discarded along with the old row, silently dropping out of edit mode.
     @Published var editingTaskID: UUID?
+    /// The search text and filter menu choices: they only decide which rows
+    /// the views show (and ↑/↓ walks), never what is in the file.
+    @Published var filter = TaskFilter()
+    /// The task a drag started from — set by the row's drag source so drop
+    /// targets can tell, while the pointer is still hovering, what would
+    /// land where (the pasteboard payload only loads asynchronously on drop).
+    var draggingTaskID: UUID?
     /// The task briefly highlighted after it jumps somewhere (moved to
     /// another section, re-indented, re-prioritised and so re-sorted), so
     /// the eye can follow it — see `flash(taskID:)` and `RowHighlight`.
@@ -72,14 +79,21 @@ final class DocumentController: ObservableObject {
     private var flashGeneration = 0
     @Published private(set) var logEvents: [LogEvent] = []
     @Published var errorMessage: String?
+    /// The file's text when it changed on disk while this window also has
+    /// changes of its own — set until the user picks a side (see
+    /// `checkForExternalChange`).
+    @Published var pendingExternalText: String?
 
-    private let fileDocument: ListoFileDocument
-    private var editor: ListoEditor
+    let fileDocument: ListoFileDocument
+    var editor: ListoEditor
     /// The text as of the last time it was interpreted — the last Modo
     /// Libre save (or mode switch), or the last Modo App action. The diff
     /// baseline for the next save.
-    private var lastKnownText: String
-    private var fileURL: URL?
+    var lastKnownText: String
+    /// What the file held when this window last read or saved it — the
+    /// reference `checkForExternalChange` compares the disk against.
+    var diskBaseline: String
+    var fileURL: URL?
 
     init(fileDocument: ListoFileDocument, fileURL: URL?) {
         self.fileDocument = fileDocument
@@ -88,8 +102,12 @@ final class DocumentController: ObservableObject {
         self.editor = ListoEditor(fileURL: url, initialText: fileDocument.text, autoPersist: false)
         self.document = editor.document
         self.lastKnownText = fileDocument.text
+        self.diskBaseline = fileDocument.text
         refreshLog()
-        fileDocument.onWillSave = { [weak self] text in self?.handleSave(currentText: text) }
+        fileDocument.onWillSave = { [weak self] text in
+            self?.diskBaseline = text
+            self?.handleSave(currentText: text)
+        }
     }
 
     private static func scratchURL() -> URL {
@@ -113,6 +131,7 @@ final class DocumentController: ObservableObject {
         editor = ListoEditor(fileURL: url, initialText: fileDocument.text, autoPersist: false)
         document = editor.document
         lastKnownText = fileDocument.text
+        diskBaseline = fileDocument.text
         refreshLog()
     }
 
@@ -231,82 +250,10 @@ final class DocumentController: ObservableObject {
 
     func toggle(taskID: UUID) {
         guard perform(animation: Motion.quick, { try $0.toggle(taskID: taskID) }) else { return }
-        playCompletionSoundIfNeeded(forTaskID: taskID)
+        SoundPlayer.playCompletionIfNeeded(document: document, taskID: taskID)
         scheduleDoneMoveIfNeeded(forTaskID: taskID)
     }
 
-    /// Plays `AppSettings.completionSoundEnabled`'s sound when the toggle
-    /// just checked the task off (not when it reopened it). Only App Mode
-    /// clicks reach here — a completion inferred from a Free Mode edit is
-    /// not something the user just did, so it stays silent.
-    private func playCompletionSoundIfNeeded(forTaskID taskID: UUID) {
-        guard AppSettings.shared.completionSoundEnabled,
-              document.allTasksRecursive.first(where: { $0.id == taskID })?.state == .done
-        else { return }
-        play(soundNamed: "Glass")
-    }
-
-    /// Restart rather than let a quick second sound be swallowed by the
-    /// still-playing first one (`play()` is a no-op while playing).
-    private func play(soundNamed name: String) {
-        let sound = NSSound(named: name)
-        sound?.stop()
-        sound?.play()
-    }
-
-    /// Plays `AppSettings.deleteSoundEnabled`'s sound after a task or
-    /// subtask was deleted from App Mode (not for deletions inferred from a
-    /// Free Mode edit, nor whole sections).
-    private func playDeleteSoundIfNeeded() {
-        guard AppSettings.shared.deleteSoundEnabled else { return }
-        play(soundNamed: "Funk")
-    }
-
-    /// User-requested addition: checking off a top-level task, when the
-    /// document has a section whose title contains "Done"/"Completed"/
-    /// "Finished" (case-insensitive, any depth), bumps it to the end of
-    /// that section after `AppSettings.doneMoveDelaySeconds` — a beat to
-    /// see the checkmark land before the row jumps away, rather than an
-    /// instant relocate. `0` disables the feature entirely.
-    ///
-    /// Everything is re-validated when the delay fires (not just captured
-    /// up front): the task could have been unchecked, deleted, or reindented
-    /// under a parent in the meantime, and the section could have been
-    /// renamed or deleted — any of which just cancels the move rather than
-    /// acting on stale state. A subtask is never moved (`moveTask` only
-    /// supports top-level tasks — see the two-level model).
-    private func scheduleDoneMoveIfNeeded(forTaskID taskID: UUID) {
-        let delay = AppSettings.shared.doneMoveDelaySeconds
-        guard delay > 0,
-              let task = document.allTasksRecursive.first(where: { $0.id == taskID }),
-              task.state == .done,
-              document.location(of: task)?.parent == nil,
-              let doneSection = Self.doneSection(in: document)
-        else { return }
-        let doneSectionID = doneSection.id
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self else { return }
-            guard let task = self.document.allTasksRecursive.first(where: { $0.id == taskID }),
-                  task.state == .done,
-                  self.document.location(of: task)?.parent == nil,
-                  let liveDoneSection = self.document.allSectionsRecursive.first(where: { $0.id == doneSectionID }),
-                  liveDoneSection.tasks.last?.id != taskID
-            else { return }
-            self.move(taskID: taskID, toSectionID: doneSectionID)
-        }
-    }
-
-    /// First section (any nesting depth, document order) whose title
-    /// contains one of the "done" keywords — a loose match, not an exact
-    /// name, so "Done ✅" or "Completed tasks" both qualify.
-    private static func doneSection(in document: ListoDocument) -> ListoSection? {
-        let keywords = ["done", "completed", "finished"]
-        return document.allSectionsRecursive.first { section in
-            let title = section.title.lowercased()
-            return keywords.contains { title.contains($0) }
-        }
-    }
 
     func rename(taskID: UUID, newText: String) {
         perform(followSelectionFrom: taskID) { try $0.renameTask(taskID: taskID, newText: newText) }
@@ -359,7 +306,7 @@ final class DocumentController: ObservableObject {
             return
         }
         perform(animation: Motion.snappy, flash: true, followSelectionFrom: taskID, silencing: { $0 == .alreadyTopLevel }) {
-            try $0.outdentTask(taskID: taskID)
+            try $0.outdentTask(taskID: taskID, absorbingFollowingSiblings: AppSettings.shared.outdentAbsorbsSiblings)
         }
     }
 
@@ -430,6 +377,15 @@ final class DocumentController: ObservableObject {
         }
     }
 
+    /// Drag-and-drop onto a task: next to it, or as its last subtask. A drop
+    /// the engine refuses (`DropRule` already filters these) is a silent
+    /// no-op.
+    func drop(taskID: UUID, onto targetID: UUID, placement: DropPlacement) {
+        perform(animation: Motion.snappy, flash: true, followSelectionFrom: taskID, silencing: { $0 == .invalidMove || $0 == .taskHasContent }) {
+            try $0.moveTask(taskID: taskID, relativeTo: targetID, placement: placement)
+        }
+    }
+
     func move(taskID: UUID, toSectionID sectionID: UUID) {
         let ids = targets(for: taskID)
         if ids.count > 1 {
@@ -453,162 +409,15 @@ final class DocumentController: ObservableObject {
     func delete(taskID: UUID) {
         let ids = targets(for: taskID)
         if ids.count > 1 {
-            if performBatch(ids, silencing: { $0 == .taskNotFound }, { try $0.deleteTask(taskID: $1) }) { playDeleteSoundIfNeeded() }
+            if performBatch(ids, silencing: { $0 == .taskNotFound }, { try $0.deleteTask(taskID: $1) }) { SoundPlayer.playDeleteIfNeeded() }
             return
         }
         guard perform(animation: Motion.snappy, { try $0.deleteTask(taskID: taskID) }) else { return }
         if selectedTaskID == taskID { selectedTaskID = nil }
         if editingTaskID == taskID { editingTaskID = nil }
-        playDeleteSoundIfNeeded()
+        SoundPlayer.playDeleteIfNeeded()
     }
 
-    /// Moves selection to the task immediately before (`direction: -1`) or
-    /// after (`direction: +1`) the current selection — ↑/↓ arrow
-    /// navigation. A no-op if nothing's selected or the move would go past
-    /// either end, same as indent/outdent at their limits.
-    ///
-    /// Scoped to the current view style: Outline renders every section as
-    /// one continuous vertical list, so navigation spans the whole
-    /// document; Kanban renders each top-level section as its own
-    /// side-by-side column, so navigation stays within the selected task's
-    /// column — crossing into a different column on ↓ would jump somewhere
-    /// spatially unrelated to where the arrow key points.
-    ///
-    /// `keepEditing`: pass `true` when called from a task's own title field
-    /// (↑/↓ while typing) to move edit focus along with the selection, not
-    /// just the selection itself — mirrors how Return/Tab already keep you
-    /// typing across the task they create or re-indent.
-    func selectAdjacent(direction: Int, keepEditing: Bool) {
-        guard let currentID = selectedTaskID,
-              let newID = adjacentTaskID(to: currentID, direction: direction) else { return }
-        if keepEditing, discardIfBlank(taskID: currentID) {
-            // The delete can re-id the neighbor (content-derived ids) —
-            // only follow it if it still resolves.
-            guard document.allTasksRecursive.contains(where: { $0.id == newID }) else { return }
-        }
-        selectedTaskID = newID
-        if keepEditing { editingTaskID = newID }
-    }
-
-    /// Every task in the current view style's navigation order (see
-    /// `selectAdjacent`) that contains `taskID` — the whole document in
-    /// Outline, the task's own column in Kanban.
-    private func navigationOrder(containing taskID: UUID) -> [UUID]? {
-        switch viewStyle {
-        case .outline:
-            return document.allTasksInDisplayOrder.map(\.id)
-        case .kanban:
-            return document.sections.first(where: { section in
-                section.allTasksRecursive.contains { $0.id == taskID }
-            })?.allTasksInDisplayOrder.map(\.id)
-        }
-    }
-
-    // MARK: - Multi-selection
-
-    func isSelected(_ taskID: UUID) -> Bool {
-        selectedTaskID == taskID || multiSelectedIDs.contains(taskID)
-    }
-
-    /// What an action invoked on `taskID` acts on: the whole multi-selection
-    /// (in display order) when `taskID` is part of it, else just that task.
-    private func targets(for taskID: UUID) -> [UUID] {
-        guard multiSelectedIDs.contains(taskID),
-              let order = navigationOrder(containing: taskID) else { return [taskID] }
-        return order.filter(multiSelectedIDs.contains)
-    }
-
-    /// ⇧↑ / ⇧↓: extends (or shrinks, back toward the anchor) the selection by
-    /// the next task *of the same level* — a selection that starts on a task
-    /// only ever holds tasks, one that starts on a subtask only subtasks.
-    func extendSelection(direction: Int) {
-        guard mode == .app, let cursor = selectedTaskID,
-              let order = navigationOrder(containing: cursor) else { return }
-        let level = depth(of: cursor)
-        let sameLevel = order.filter { depth(of: $0) == level }
-        let anchor = selectionAnchorID.flatMap { !multiSelectedIDs.isEmpty && sameLevel.contains($0) ? $0 : nil } ?? cursor
-        guard let cursorIdx = sameLevel.firstIndex(of: cursor),
-              let anchorIdx = sameLevel.firstIndex(of: anchor),
-              sameLevel.indices.contains(cursorIdx + direction) else { return }
-        let newIdx = cursorIdx + direction
-        let range = min(anchorIdx, newIdx)...max(anchorIdx, newIdx)
-        keepsMultiSelection = true
-        multiSelectedIDs = range.count > 1 ? Set(sameLevel[range]) : []
-        selectedTaskID = sameLevel[newIdx]
-        keepsMultiSelection = false
-        selectionAnchorID = range.count > 1 ? anchor : nil
-    }
-
-    private func depth(of taskID: UUID) -> Int {
-        document.allTasksRecursive.first { $0.id == taskID }.map { document.depth(of: $0) } ?? 0
-    }
-
-    /// Runs `action` on each of `ids` as one undo step, then re-points the
-    /// selection (cursor, anchor, multi-selection) at wherever those tasks
-    /// ended up.
-    ///
-    /// - Parameter follow: the action gives its task a new id
-    ///   (`lastActionTaskID`), as indent/outdent/move/reorder do.
-    /// - Parameter silencing: errors that are just "can't go further" for one
-    ///   task; that task is skipped and the rest carry on.
-    /// - Returns: whether at least one action ran.
-    @discardableResult
-    private func performBatch(
-        _ ids: [UUID],
-        follow: Bool = false,
-        silencing: (ListoEditorError) -> Bool = { _ in false },
-        _ action: (ListoEditor, UUID) throws -> Void
-    ) -> Bool {
-        var newIDs: [UUID: UUID] = [:]
-        var ran = false
-        do {
-            try editor.performBatch {
-                for id in ids {
-                    do {
-                        try action(editor, id)
-                        ran = true
-                        newIDs[id] = follow ? (editor.lastActionTaskID ?? id) : id
-                    } catch let error as ListoEditorError where silencing(error) {
-                        newIDs[id] = id
-                    }
-                }
-            }
-        } catch {
-            errorMessage = "\(error)"
-        }
-        guard ran else { return false }
-        syncDocumentText()
-        withAnimation(Motion.snappy) {
-            document = editor.document
-            reselect(afterBatch: ids, newIDs: newIDs)
-        }
-        refreshLog()
-        saveIfPossible()
-        return ran
-    }
-
-    private func reselect(afterBatch ids: [UUID], newIDs: [UUID: UUID]) {
-        let live = Set(document.allTasksRecursive.map(\.id))
-        func follow(_ id: UUID?) -> UUID? { id.flatMap { newIDs[$0] ?? $0 }.flatMap { live.contains($0) ? $0 : nil } }
-        let remaining = ids.compactMap { follow($0) }
-        let cursor = follow(selectedTaskID) ?? remaining.last
-        let anchor = follow(selectionAnchorID) ?? remaining.first
-        keepsMultiSelection = true
-        multiSelectedIDs = remaining.count > 1 ? Set(remaining) : []
-        selectedTaskID = remaining.count > 1 ? cursor : remaining.first
-        keepsMultiSelection = false
-        selectionAnchorID = remaining.count > 1 ? anchor : nil
-        if let id = editingTaskID, !live.contains(id) { editingTaskID = nil }
-    }
-
-    /// The task next to `taskID` in the current view style's navigation
-    /// order (see `selectAdjacent`), or `nil` past either end.
-    private func adjacentTaskID(to taskID: UUID, direction: Int) -> UUID? {
-        guard let orderedIDs = navigationOrder(containing: taskID),
-              let idx = orderedIDs.firstIndex(of: taskID) else { return nil }
-        let newIdx = idx + direction
-        return orderedIDs.indices.contains(newIdx) ? orderedIDs[newIdx] : nil
-    }
 
     /// No blank tasks survive losing focus: a task/subtask may be empty
     /// while it is being edited, but is deleted as soon as editing moves
@@ -651,7 +460,7 @@ final class DocumentController: ObservableObject {
         let target = neighborID.flatMap { id in document.allTasksRecursive.contains { $0.id == id } ? id : nil }
         editingTaskID = keepEditing ? target : nil
         selectedTaskID = target
-        playDeleteSoundIfNeeded()
+        SoundPlayer.playDeleteIfNeeded()
         return true
     }
 
@@ -722,7 +531,7 @@ final class DocumentController: ObservableObject {
     ///   lastActionTaskID` afterward (e.g. a brand-new task with no prior id
     ///   to follow from) should check this first.
     @discardableResult
-    private func perform(
+    func perform(
         animation: Animation? = nil,
         flash: Bool = false,
         followSelectionFrom taskID: UUID? = nil,
@@ -758,7 +567,7 @@ final class DocumentController: ObservableObject {
         }
     }
 
-    private func syncDocumentText() {
+    func syncDocumentText() {
         lastKnownText = editor.currentText
         fileDocument.text = editor.currentText
     }
@@ -768,15 +577,15 @@ final class DocumentController: ObservableObject {
     /// waiting for its own autosave timer. Only once the document already has
     /// a real path: on a brand-new, never-saved document this would pop the
     /// "Save As" panel on every action.
-    private func saveIfPossible() {
+    func saveIfPossible() {
         if fileURL != nil {
-            NSApp.sendAction(#selector(NSDocument.save(_:)), to: nil, from: nil)
+            NSApp?.sendAction(#selector(NSDocument.save(_:)), to: nil, from: nil)
         }
     }
 
     /// Highlights `taskID`'s row for a moment (`RowHighlight`), fading out
     /// after — a later flash cancels the earlier one's fade-out.
-    private func flash(taskID: UUID) {
+    func flash(taskID: UUID) {
         flashGeneration += 1
         let generation = flashGeneration
         withAnimation(Motion.quick) { flashTaskID = taskID }
@@ -786,7 +595,7 @@ final class DocumentController: ObservableObject {
         }
     }
 
-    private func refreshLog() {
+    func refreshLog() {
         logEvents = (try? editor.readLog()) ?? []
     }
 

@@ -122,6 +122,11 @@ struct SettingsView: View {
                     isOn: $settings.deleteSoundEnabled
                 )
 
+                Toggle(
+                    L("settings.outdentAbsorbs", "Al desindentar, las subtareas siguientes pasan a ser suyas"),
+                    isOn: $settings.outdentAbsorbsSiblings
+                )
+
                 LabeledContent(L("settings.doneMoveDelay", "Mover a Hecho después de")) {
                     Stepper(
                         value: $settings.doneMoveDelaySeconds,

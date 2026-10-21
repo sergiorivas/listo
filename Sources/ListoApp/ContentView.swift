@@ -57,6 +57,8 @@ struct ContentView: View {
                     .pickerStyle(.segmented)
                     .labelStyle(.iconOnly)
                     .frame(width: 90)
+
+                    FilterMenu(controller: controller)
                 } else {
                     // Modo Libre only interprets/logs changes at save time
                     // (spec change: no more live watcher) — give it an
@@ -77,8 +79,35 @@ struct ContentView: View {
                 .help(L("log.open", "Ver historial"))
             }
         }
+        .searchable(text: $controller.filter.query, placement: .toolbar, prompt: L("search.prompt", "Buscar tareas"))
+        .overlay {
+            if controller.mode == .app, controller.filter.isActive,
+               controller.filter.displayOrder(in: controller.document).isEmpty {
+                Text(L("filter.noMatches", "Ninguna tarea coincide"))
+                    .foregroundStyle(.secondary)
+                    .allowsHitTesting(false)
+            }
+        }
         .sheet(isPresented: $showLog) {
             LogPanelView(controller: controller)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            controller.checkForExternalChange()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+            controller.checkForExternalChange()
+        }
+        .alert(
+            L("external.title", "El archivo cambió en el disco"),
+            isPresented: Binding(
+                get: { controller.pendingExternalText != nil },
+                set: { _ in }
+            )
+        ) {
+            Button(L("external.reload", "Recargar desde el disco"), role: .destructive) { controller.reloadFromDisk() }
+            Button(L("external.keep", "Conservar mi versión"), role: .cancel) { controller.keepLocalVersion() }
+        } message: {
+            Text(L("external.message", "Otra aplicación modificó este archivo y tienes cambios sin guardar. Recargar descarta tus cambios."))
         }
         .onAppear {
             if let fileURL {

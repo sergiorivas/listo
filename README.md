@@ -27,9 +27,14 @@ Sources/ListoEngine/     UI-independent engine (Swift Package), spec §02/§05/�
                           may not, and can't have subtasks of its own)
   Parser.swift           markdown → tree (2-space/tab indentation rule, §02)
   Serializer.swift       tree → markdown (used for new files and LLM merges)
-  Editor.swift            App Mode actions: add/toggle/rename/delete a
-                          task or section, note, indent, move — minimal
-                          edits + a straight-line log (§03/§05)
+  Editor.swift            Core of the App Mode editor: buffer, undo/redo
+                          history, internals (§03/§05)
+  Editor+Tasks.swift      add/toggle/rename/priority/note/insert
+  Editor+Structure.swift  indent, outdent, reorder, split, group, move
+                          (incl. drop-onto-task), delete
+  TaskMetadata.swift      `@2026-11-03` due dates and `#tags` read from a
+                          task's title
+  TaskFilter.swift        Search/filter criteria + the filtered display order
   StableID.swift          Deterministic, content-derived UUID — a task's/
                           section's identity survives a reparse as long as
                           its content didn't change
@@ -45,7 +50,10 @@ Sources/ListoApp/        SwiftUI app (macOS executable), ADR-001
                           with SwiftUI; `onWillSave` triggers the Free Mode
                           diff
   DocumentController.swift Wires the engine to the UI: modes, diff on save,
-                          log
+                          log (+Selection, +DoneMove, +External extensions)
+  TitleEditing.swift      Title-field flow shared by Kanban and Outline rows
+  TaskDropTarget.swift    Drag a task onto another: reorder / nest (DropRule)
+  TaskMetaViews.swift     Due/tag badges, Due date menu, toolbar filter menu
   ContentView.swift       Toolbar (App/Free Mode, Kanban/Outline, Save, history)
   KanbanView.swift        Board view (§04)
   OutlineBoardView.swift  Document view with real typographic hierarchy (§04)
@@ -57,7 +65,10 @@ Sources/ListoApp/        SwiftUI app (macOS executable), ADR-001
   LocalizationTable.swift es/en translations in code, not a String Catalog
   RecentFilesStore.swift  Remembers opened files; reopens the last one on launch
 
-Tests/ListoEngineTests/  73 tests covering the parser, editor, differ, and log
+Tests/ListoEngineTests/  137 tests covering the parser, editor, differ, metadata,
+                         filter, drop and log
+Tests/ListoAppTests/     42 tests covering DocumentController, DropRule and
+                         external-change handling
 Scripts/version.sh       Derives the version from git tags (no manual input)
 Scripts/build_app.sh     Builds an ad-hoc-signed Listo.app into dist/ — no
                          tests, tagging, or publishing; just a local build
@@ -128,6 +139,28 @@ replaces it with one top-level task per subtask, named `Parent > Subtask`:
 keeps its subtask's done state and priority (an open one with none inherits
 the parent's), the parent's note is copied onto each, and ⌘Z undoes it.
 
+## Search, due dates and tags
+
+⌘F searches task text and notes; the toolbar filter menu narrows by state,
+minimum priority, due bucket and tag (clicking a `#tag` chip filters by it).
+Write `@2026-11-03` and `#work` anywhere in a title: the board shows a date
+badge (red when overdue) and tag chips in place of the raw tokens, and the
+right-click menu has a Due date submenu. Filtering only hides rows; the file
+is untouched.
+
+## Drag and drop
+
+Drag a task onto another: the top or bottom edge of the row reorders (a line
+shows where), the middle nests it as that task's last subtask. Dropping on a
+column or heading still moves it to the end of that section. Reordering
+between different priorities isn't offered, since the board sorts by
+priority.
+
+## External changes
+
+If the file is edited elsewhere while Listo is open it reloads when you come
+back to the window, or asks first if you also have unsaved changes.
+
 ## User preferences
 
 Besides the §07 defaults (system language, system appearance), Settings lets
@@ -142,7 +175,9 @@ there is none); quitting is unaffected.
 
 ## Known limitations
 
-- `outdentTask` doesn't absorb the siblings that followed it as children —
-  simplified semantics on purpose, not a bug, but worth keeping in mind if
-  you expect Workflowy-style behavior.
+- By default `outdentTask` doesn't absorb the siblings that followed it as
+  children — the task moves below its former parent. Turn on "When
+  outdenting, following subtasks become its subtasks" in Settings for
+  Workflowy-style behavior (single-task outdent only; a multi-selection
+  outdent always uses the default).
 - Ad-hoc signed, not notarized by Apple (see "Installing" above).
