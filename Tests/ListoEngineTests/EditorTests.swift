@@ -29,6 +29,21 @@ final class EditorTests: XCTestCase {
         XCTAssertTrue(editor.currentText.contains("- [ ] New one"))
     }
 
+    func testAddSectionAppendsTopLevelHeading() throws {
+        let editor = makeEditor("# ahora\n- [ ] Task A\n\n")
+        let event = try editor.addSection(title: "later")
+        XCTAssertEqual(event.event, .created)
+        XCTAssertEqual(editor.document.sections.map(\.title), ["ahora", "later"])
+        XCTAssertEqual(editor.document.sections[1].level, 1)
+        XCTAssertEqual(editor.document.sections[0].tasks.map(\.text), ["Task A"])
+    }
+
+    func testAddSectionToEmptyFile() throws {
+        let editor = makeEditor("")
+        try editor.addSection(title: "first")
+        XCTAssertEqual(editor.document.sections.map(\.title), ["first"])
+    }
+
     func testToggleCompletesAndReopens() throws {
         let editor = makeEditor("# ahora\n- [ ] Task A\n")
         let taskID = editor.document.sections[0].tasks[0].id

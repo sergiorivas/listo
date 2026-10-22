@@ -40,14 +40,20 @@ struct ContentView: View {
         // `@Published` changes (selection/edit state), not just to *which*
         // controller is focused.
         .focusedSceneObject(controller)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if controller.mode == .app { FilterBar(controller: controller) }
+        }
         .toolbar {
-            ToolbarItemGroup {
+            // Grouped by purpose, with spacing between groups: what the
+            // document is shown as (left), how it is narrowed, and history.
+            ToolbarItemGroup(placement: .navigation) {
                 Picker(L("picker.mode", "Modo"), selection: $controller.mode) {
                     Text(L("mode.app", "App")).tag(EditMode.app)
                     Text(L("mode.free", "Libre")).tag(EditMode.freeEdit)
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 140)
+                .help(L("picker.mode.help", "Cambiar entre Modo App y Modo Libre"))
 
                 if controller.mode == .app {
                     Picker(L("picker.view", "Vista"), selection: $controller.viewStyle) {
@@ -57,7 +63,12 @@ struct ContentView: View {
                     .pickerStyle(.segmented)
                     .labelStyle(.iconOnly)
                     .frame(width: 90)
+                    .help(L("picker.view.help", "Cambiar entre Kanban y Outline"))
+                }
+            }
 
+            ToolbarItemGroup(placement: .primaryAction) {
+                if controller.mode == .app {
                     FilterMenu(controller: controller)
                 } else {
                     // Modo Libre only interprets/logs changes at save time
@@ -70,11 +81,13 @@ struct ContentView: View {
                     }
                     .help(L("action.save.help", "Guardar e interpretar los cambios (⌘S)"))
                 }
+            }
 
+            ToolbarItem(placement: .primaryAction) {
                 Button {
                     showLog = true
                 } label: {
-                    Image(systemName: "clock.arrow.circlepath")
+                    Label(L("log.open", "Ver historial"), systemImage: "clock.arrow.circlepath")
                 }
                 .help(L("log.open", "Ver historial"))
             }
@@ -83,9 +96,7 @@ struct ContentView: View {
         .overlay {
             if controller.mode == .app, controller.filter.isActive,
                controller.filter.displayOrder(in: controller.document).isEmpty {
-                Text(L("filter.noMatches", "Ninguna tarea coincide"))
-                    .foregroundStyle(.secondary)
-                    .allowsHitTesting(false)
+                NoMatchesView(controller: controller)
             }
         }
         .sheet(isPresented: $showLog) {

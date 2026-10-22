@@ -16,10 +16,13 @@ struct NoteEditTarget: Identifiable {
 
 struct NoteEditorPopover: View {
     @State private var text: String
+    @Environment(\.dismiss) private var dismiss
+    let hadNote: Bool
     let onSave: (String) -> Void
 
     init(target: NoteEditTarget, onSave: @escaping (String) -> Void) {
         _text = State(initialValue: target.initialText)
+        hadNote = !target.initialText.isEmpty
         self.onSave = onSave
     }
 
@@ -29,12 +32,24 @@ struct NoteEditorPopover: View {
                 .font(AppSettings.shared.font(.headline))
             TextEditor(text: $text)
                 .font(AppSettings.shared.font(.body, design: .monospaced))
-                .frame(width: 300, height: 140)
+                .frame(width: 320, height: 160)
             HStack {
+                // Saving an empty note removes it (the callers treat "" as
+                // nil), so this is just a clearer way to say so.
+                if hadNote {
+                    Button(L("note.delete", "Eliminar nota"), role: .destructive) {
+                        onSave("")
+                    }
+                }
                 Spacer()
+                Button(L("note.cancel", "Cancelar")) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
                 Button(L("note.save", "Guardar")) {
                     onSave(text)
                 }
+                .keyboardShortcut(.return, modifiers: .command)
+                .buttonStyle(.borderedProminent)
+                .help(L("note.save.help", "Guardar (⌘↩)"))
             }
         }
         .padding()

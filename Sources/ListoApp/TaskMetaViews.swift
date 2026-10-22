@@ -34,14 +34,18 @@ struct TaskMetaBadges: View {
             let status = DueStatus(due: due, today: TaskDueDate(date: Date()))
             // A finished task isn't late any more.
             let shown = done ? DueStatus.later : status
-            Label(due.date().formatted(.dateTime.month(.abbreviated).day()), systemImage: "calendar")
-                .font(settings.font(.caption))
+            // Overdue isn't colour alone: a warning glyph and heavier weight too.
+            Label(
+                due.date().formatted(.dateTime.month(.abbreviated).day()),
+                systemImage: shown == .overdue ? "exclamationmark.triangle.fill" : "calendar"
+            )
+                .font(settings.font(.caption, weight: shown == .overdue ? .semibold : .regular))
                 .foregroundStyle(shown.color)
                 .lineLimit(1)
                 .fixedSize()
                 .opacity(done ? 0.5 : 1)
                 .help(done ? L("due.date", "Fecha límite") : status.label)
-                .accessibilityLabel("\(L("due.date", "Fecha límite")) \(due.date().formatted(date: .long, time: .omitted))")
+                .accessibilityLabel("\(done ? L("due.date", "Fecha límite") : status.label) \(due.date().formatted(date: .long, time: .omitted))")
         }
         ForEach(metadata.tags, id: \.self) { tag in
             Button {
@@ -129,7 +133,7 @@ struct FilterMenu: View {
                 Button(L("filter.clear", "Quitar filtros")) { controller.filter = TaskFilter() }
             }
         } label: {
-            Image(systemName: controller.filter.isActive
+            Label(L("filter.title", "Filtrar tareas"), systemImage: controller.filter.isActive
                   ? "line.3.horizontal.decrease.circle.fill"
                   : "line.3.horizontal.decrease.circle")
         }

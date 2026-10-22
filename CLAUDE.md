@@ -634,3 +634,27 @@ touch lost `private` (internal). `DocumentController` gained
 test target (`ListoAppTests`, `@testable import ListoApp`) covering the
 controller; `saveIfPossible` uses `NSApp?` because there is no NSApplication
 under XCTest.
+
+## UI polish pass (empty states, hover actions, filter bar)
+
+- **Add column** (`ListoEditor.addSection`, `DocumentController.addSection`):
+  appends a top-level heading at the existing top-level level and focuses
+  its title (`focusSectionID`, claimed by `SectionTitleField`). Kanban has a
+  "+" tile after the last column (counted in `idealContentWidth`); Outline a
+  button at the end. A file with no sections shows `EmptyBoardView`.
+- **Hover-revealed actions.** Section `+`/trash (`SectionHeaderActions`) and
+  the row's add-note icon (`AddNoteButton`: hovered or selected) are
+  `opacity 0` + non-hit-testable when idle, not removed, so layout never
+  jumps and VoiceOver still sees them.
+- **Notes clamp to 3 lines** with Show more/less (`TaskNoteText`); the
+  popover has Cancel, Delete note and ⌘↩ to save.
+- **Filter bar** (`FilterBar`): removable chips + "N of M tasks" (subtasks
+  included in both) under the toolbar; `NoMatchesView` offers Clear.
+- **Kanban/Outline row sharing.** `TaskRowParts.swift` holds what both rows
+  duplicated (title field + key handling, context menu, checkbox, note
+  pieces). The row shells (selection, focus, Return/Delete handling) still
+  differ and remain separate. Outline titles now wrap; Kanban's follow the
+  truncate/wrap setting and always have a full-title tooltip.
+- A cancelled drag leaves `draggingTaskID` set (only a drop clears it), so
+  no "dim the dragged card" effect was built on it. None of this was run in
+  the live GUI.

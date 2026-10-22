@@ -65,6 +65,9 @@ final class DocumentController: ObservableObject {
     /// that replaces this one, where per-row `@State` would just be
     /// discarded along with the old row, silently dropping out of edit mode.
     @Published var editingTaskID: UUID?
+    /// A section whose title field should take focus (just created by
+    /// `addSection`); the field clears it once it has claimed focus.
+    @Published var focusSectionID: UUID?
     /// The search text and filter menu choices: they only decide which rows
     /// the views show (and ↑/↓ walks), never what is in the file.
     @Published var filter = TaskFilter()
@@ -269,6 +272,12 @@ final class DocumentController: ObservableObject {
         // to its new sorted spot; flash it since that jump can be long.
         guard perform(animation: Motion.snappy, { try $0.setPriority(taskID: taskID, priority: priority) }) else { return }
         flash(taskID: taskID)
+    }
+
+    /// Appends a new column/section and puts its title into editing.
+    func addSection() {
+        guard perform(animation: Motion.snappy, { try $0.addSection(title: L("section.new", "Nueva columna")) }) else { return }
+        focusSectionID = document.sections.last?.id
     }
 
     func renameSection(sectionID: UUID, newTitle: String) {

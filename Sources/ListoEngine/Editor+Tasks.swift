@@ -118,6 +118,32 @@ extension ListoEditor {
         return try record(event)
     }
 
+    /// Appends an empty top-level section (a new Kanban column) at the end of
+    /// the file, at the same heading level as the existing top-level ones.
+    @discardableResult
+    public func addSection(title: String) throws -> LogEvent {
+        let level = document.sections.first?.level ?? 1
+        var insertionIndex = lines.count
+        while insertionIndex > 0, lines[insertionIndex - 1].trimmingCharacters(in: .whitespaces).isEmpty {
+            insertionIndex -= 1
+        }
+        var block = [String(repeating: "#", count: level) + " " + title]
+        if insertionIndex > 0 { block.insert("", at: 0) }
+        lines.insert(contentsOf: block, at: insertionIndex)
+        try commit()
+
+        let event = LogEvent(
+            file: fileURL.lastPathComponent,
+            event: .created,
+            taskID: document.sections.last?.shortID ?? "t_????",
+            sectionPath: .path([title]),
+            text: title,
+            source: .app,
+            interpretedBy: .userAction
+        )
+        return try record(event)
+    }
+
     /// Renames a section's heading (the Kanban column title / Outline
     /// heading text), preserving its level (`#`/`##`/`###`).
     @discardableResult

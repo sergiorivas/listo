@@ -25,10 +25,22 @@ struct KanbanView: View {
                 ? KanbanLayoutStore.collapsedColumnWidth
                 : KanbanLayoutStore.shared.width(documentKey: controller.documentKey, sectionTitle: section.title)
         }
-        return widths.reduce(0, +) + CGFloat(widths.count - 1) * columnSpacing + horizontalPadding * 2
+        return widths.reduce(0, +) + CGFloat(widths.count) * columnSpacing + addColumnWidth + horizontalPadding * 2
     }
 
+    /// The "+" tile after the last column.
+    static let addColumnWidth: CGFloat = 36
+
     var body: some View {
+        if controller.document.sections.isEmpty {
+            EmptyBoardView { controller.addSection() }
+                .background(Color(nsColor: .windowBackgroundColor))
+        } else {
+            board
+        }
+    }
+
+    private var board: some View {
         GeometryReader { geometry in
             ScrollView(.horizontal) {
                 HStack(alignment: .top, spacing: Self.columnSpacing) {
@@ -40,6 +52,7 @@ struct KanbanView: View {
                         )
                             .transition(Motion.sectionTransition)
                     }
+                    addColumnButton
                 }
                 .padding(Self.horizontalPadding)
                 // When the window is wider than the columns need (e.g.
@@ -53,6 +66,26 @@ struct KanbanView: View {
     }
 }
 
+extension KanbanView {
+    private var addColumnButton: some View {
+        Button {
+            controller.addSection()
+        } label: {
+            Image(systemName: "plus")
+                .foregroundStyle(.secondary)
+                .frame(width: Self.addColumnWidth, height: Self.addColumnWidth)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .strokeBorder(Color.secondary.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                )
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(L("section.add", "Agregar columna"))
+        .accessibilityLabel(L("section.add", "Agregar columna"))
+    }
+}
+
 private struct KanbanColumn: View {
     @ObservedObject var controller: DocumentController
     @ObservedObject private var settings = AppSettings.shared
@@ -61,7 +94,7 @@ private struct KanbanColumn: View {
     /// Height of a collapsed column: the full height of the board, so every
     /// collapsed column is the same fixed strip whatever its title or count.
     let collapsedHeight: CGFloat
-    @State private var titleText = ""
+    @State private var isHeaderHovering = false
     /// Width while a drag on the resize handle is in progress — laid over
     /// the persisted width so the column tracks the mouse smoothly; only
     /// written back to `KanbanLayoutStore` (and to disk) once the drag ends.
@@ -96,7 +129,7 @@ private struct KanbanColumn: View {
         if settings.lastSectionBackgroundEnabled, sections.count > 1, sections.last?.id == section.id {
             return settings.lastSectionBackgroundColor.opacity(0.18)
         }
-        return Color.gray.opacity(0.08)
+        return Color.gray.opacity(0.12)
     }
 
     var body: some View {
@@ -138,27 +171,24 @@ private struct KanbanColumn: View {
         HStack(spacing: 4) {
             collapseButton
 
-            TextField("", text: $titleText, onCommit: {
-                let trimmed = titleText.trimmingCharacters(in: .whitespaces)
-                if !trimmed.isEmpty, trimmed != section.title {
-                    controller.renameSection(sectionID: section.id, newTitle: trimmed)
-                } else {
-                    titleText = section.title
-                }
-            })
-            .textFieldStyle(.plain)
-            .focusEffectDisabled()
-            .font(settings.font(.headline, design: .monospaced, weight: .semibold))
-            .lineLimit(1)
-            .onAppear { titleText = section.title }
+            SectionTitleField(
+                controller: controller,
+                section: section,
+                font: settings.font(.headline, design: .monospaced, weight: .semibold)
+            )
 
             SectionCountBadge(count: controller.filter.count(in: section))
 
             Spacer(minLength: 0)
 
-            SectionAddTaskButton { controller.addTaskAndEdit(toSectionID: section.id) }
-            SectionDeleteButton { controller.deleteSection(sectionID: section.id) }
+            SectionHeaderActions(
+                isVisible: isHeaderHovering,
+                onAdd: { controller.addTaskAndEdit(toSectionID: section.id) },
+                onDelete: { controller.deleteSection(sectionID: section.id) }
+            )
         }
+        .contentShape(Rectangle())
+        .onHover { isHeaderHovering = $0 }
     }
 
     /// The collapsed column: a fixed-width, full-board-height strip with the
@@ -202,11 +232,20 @@ private struct KanbanColumn: View {
         }
         .buttonStyle(.plain)
         .help(isCollapsed ? L("column.expand", "Expandir columna") : L("column.collapse", "Colapsar columna"))
+        .accessibilityLabel(isCollapsed ? L("column.expand", "Expandir columna") : L("column.collapse", "Colapsar columna"))
     }
 
     private var taskList: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 6) {
+                if section.tasks.isEmpty, section.subsections.isEmpty, !controller.filter.isActive {
+                    Text(L("column.empty", "Sin tareas. Suelta una aquí o pulsa +"))
+                        .font(settings.font(.caption))
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                }
                 ForEach(controller.filter.visible(section.displayTasks), id: \.id) { task in
                     TaskChip(controller: controller, task: task)
                         .transition(Motion.rowTransition)
@@ -256,33 +295,31 @@ private struct KanbanSubgroup: View {
     @ObservedObject var controller: DocumentController
     @ObservedObject private var settings = AppSettings.shared
     let section: ListoSection
-    @State private var titleText = ""
     @State private var isDropTargeted = false
+    @State private var isHeaderHovering = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
-                TextField("", text: $titleText, onCommit: {
-                    let trimmed = titleText.trimmingCharacters(in: .whitespaces)
-                    if !trimmed.isEmpty, trimmed != section.title {
-                        controller.renameSection(sectionID: section.id, newTitle: trimmed)
-                    } else {
-                        titleText = section.title
-                    }
-                })
-                .textFieldStyle(.plain)
-                .focusEffectDisabled()
-                .font(settings.font(.caption, weight: .bold))
-                .foregroundStyle(.secondary)
-                .onAppear { titleText = section.title }
+                SectionTitleField(
+                    controller: controller,
+                    section: section,
+                    font: settings.font(.caption, weight: .bold),
+                    color: .secondary
+                )
 
                 SectionCountBadge(count: controller.filter.count(in: section))
 
                 Spacer(minLength: 0)
 
-                SectionAddTaskButton { controller.addTaskAndEdit(toSectionID: section.id) }
-                SectionDeleteButton { controller.deleteSection(sectionID: section.id) }
+                SectionHeaderActions(
+                    isVisible: isHeaderHovering,
+                    onAdd: { controller.addTaskAndEdit(toSectionID: section.id) },
+                    onDelete: { controller.deleteSection(sectionID: section.id) }
+                )
             }
+            .contentShape(Rectangle())
+            .onHover { isHeaderHovering = $0 }
             ForEach(controller.filter.visible(section.displayTasks), id: \.id) { task in
                 TaskChip(controller: controller, task: task)
                     .transition(Motion.rowTransition)
@@ -318,6 +355,10 @@ private struct TaskChip: View {
         .padding(8)
         .background(Color(nsColor: .textBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: 6))
+        // Hairline + soft shadow so a card still separates from its column
+        // in dark mode, where white-on-gray alone barely does.
+        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.5))
+        .shadow(color: .black.opacity(0.12), radius: 1.5, y: 1)
         .popover(item: $noteEdit) { target in
             NoteEditorPopover(target: target) { newText in
                 controller.setNote(taskID: target.id, note: newText.isEmpty ? nil : newText)
@@ -340,10 +381,9 @@ private struct TaskRow: View {
     let allowMove: Bool
     let onEditNote: (NoteEditTarget) -> Void
     @State private var text = ""
+    @State private var isHovering = false
     @FocusState private var isRowFocused: Bool
-    @FocusState private var isTextFieldFocused: Bool
 
-    private static let maxDepth = ListoEditor.maxSubtaskDepth
     private var isSelected: Bool { controller.isSelected(task.id) }
     /// Whether the title is currently a live `TextField`. Click only
     /// selects the row (see `ownRow`'s doc comment below); this is what
@@ -357,9 +397,6 @@ private struct TaskRow: View {
     /// only shared controller state survives that swap to keep the new row
     /// in edit mode too.
     private var isEditing: Bool { controller.editingTaskID == task.id }
-    private var editing: TitleEditing {
-        TitleEditing(controller: controller, task: task, isEditing: isEditing, text: $text)
-    }
     /// Only a top-level task can carry a note — Listo's tree is
     /// deliberately just task + subtask (see `ListoEditor.setNote`).
     private var canHaveNote: Bool { depth == 0 }
@@ -376,6 +413,7 @@ private struct TaskRow: View {
                     }
                 }
                 .padding(.leading, depth == 0 ? 18 : 14)
+                .subtaskGuide()
             }
         }
     }
@@ -393,35 +431,39 @@ private struct TaskRow: View {
                 if depth > 0 {
                     Image(systemName: "arrow.turn.down.right")
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
                 }
 
-                Button {
+                TaskCheckboxButton(isDone: task.state == .done) {
                     controller.selectedTaskID = task.id
                     isRowFocused = true
                     controller.toggle(taskID: task.id)
-                } label: {
-                    TaskCheckboxIcon(isDone: task.state == .done)
                 }
-                .buttonStyle(.plain)
 
-                titleField
+                // Two settings-driven behaviors when a title is wider than
+                // the column: clip it to one line (`.truncate`), or let it
+                // wrap and grow the row's (and so the column's) height
+                // (`.wrap`) — see `KanbanTitleOverflow`.
+                TaskTitleField(
+                    controller: controller,
+                    task: task,
+                    depth: depth,
+                    text: $text,
+                    lineLimit: settings.kanbanTitleOverflow == .truncate ? 1 : nil,
+                    onBeginEditing: beginEditing
+                )
 
+                if depth == 0 { SubtaskProgressBadge(task: task) }
                 PriorityBadge(priority: task.priority, dimmed: task.state == .done)
                 TaskMetaBadges(controller: controller, task: task)
 
                 if canHaveNote, task.note == nil {
-                    Button {
+                    AddNoteButton(isVisible: isHovering || isSelected) {
                         controller.selectedTaskID = task.id
                         isRowFocused = true
                         onEditNote(NoteEditTarget(id: task.id, initialText: ""))
-                    } label: {
-                        Image(systemName: "note.text.badge.plus")
-                            .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.plain)
-                    .opacity(0.35)
-                    .transition(.opacity)
                 }
             }
 
@@ -430,20 +472,15 @@ private struct TaskRow: View {
             // by tapping the note itself. Top-level tasks only; subtasks
             // don't carry notes.
             if canHaveNote, let note = task.note, !note.isEmpty {
-                Text(note)
-                    .font(settings.font(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .padding(.leading, 22)
-                    .transition(Motion.rowTransition)
-                    .onTapGesture {
-                        controller.selectedTaskID = task.id
-                        onEditNote(NoteEditTarget(id: task.id, initialText: note))
-                    }
+                TaskNoteText(note: note) {
+                    controller.selectedTaskID = task.id
+                    onEditNote(NoteEditTarget(id: task.id, initialText: note))
+                }
             }
         }
         .padding(4)
         .contentShape(Rectangle())
+        .onHover { isHovering = $0 }
         .rowHighlight(isSelected: isSelected, isFlashing: controller.flashTaskID == task.id)
         .clipShape(RoundedRectangle(cornerRadius: 5))
         .focusable()
@@ -474,7 +511,7 @@ private struct TaskRow: View {
                 return .handled
             case .delete, .deleteForward:
                 // A blank task/subtask (nothing typed yet) goes away on
-                // Delete, same as while editing it below.
+                // Delete, same as while editing it.
                 guard press.phase == .down, task.text.isEmpty else { return .ignored }
                 return controller.deleteEmpty(taskID: task.id, keepEditing: false) ? .handled : .ignored
             default:
@@ -498,158 +535,7 @@ private struct TaskRow: View {
         }
         .taskDragAndDrop(controller: controller, task: task, showsSubtasks: !controller.filter.visibleSubtasks(of: task).isEmpty)
         .contextMenu {
-            if canHaveNote {
-                Button {
-                    controller.selectedTaskID = task.id
-                    onEditNote(NoteEditTarget(id: task.id, initialText: task.note ?? ""))
-                } label: {
-                    Label(
-                        task.note == nil ? L("note.add", "Agregar nota") : L("note.edit", "Editar nota"),
-                        systemImage: "note.text"
-                    )
-                }
-                Divider()
-            }
-            Button {
-                controller.indent(taskID: task.id)
-            } label: {
-                Label(L("task.indent", "Indentar"), systemImage: "increase.indent")
-            }
-            .disabled(depth >= Self.maxDepth)
-            Button {
-                controller.outdent(taskID: task.id)
-            } label: {
-                Label(L("task.outdent", "Quitar indentación"), systemImage: "decrease.indent")
-            }
-            .disabled(depth == 0)
-            Button {
-                controller.reorder(taskID: task.id, direction: -1)
-            } label: {
-                Label(L("task.moveUp", "Mover arriba"), systemImage: "arrow.up")
-            }
-            Button {
-                controller.reorder(taskID: task.id, direction: 1)
-            } label: {
-                Label(L("task.moveDown", "Mover abajo"), systemImage: "arrow.down")
-            }
-            Button {
-                controller.split(taskID: task.id)
-            } label: {
-                Label(L("task.split", "Dividir en tareas"), systemImage: "arrow.triangle.branch")
-            }
-            .disabled(task.subtasks.isEmpty)
-            if controller.multiSelectedIDs.contains(task.id) {
-                Button {
-                    controller.group(taskID: task.id)
-                } label: {
-                    Label(L("task.group", "Agrupar en una tarea"), systemImage: "rectangle.stack")
-                }
-            }
-            if allowMove {
-                Menu {
-                    ForEach(controller.document.sections, id: \.id) { s in
-                        Button(s.title) { controller.move(taskID: task.id, toSectionID: s.id) }
-                    }
-                } label: {
-                    Label(L("task.moveTo", "Mover a…"), systemImage: "arrow.turn.up.right")
-                }
-            }
-            Divider()
-            PriorityMenu(controller: controller, task: task)
-            DueMenu(controller: controller, task: task)
-            Divider()
-            Button(role: .destructive) {
-                controller.delete(taskID: task.id)
-            } label: {
-                Label(L("task.delete", "Eliminar"), systemImage: "trash")
-            }
-        }
-    }
-
-    /// Plain text when not editing (so a click just selects the row instead
-    /// of always dropping into rename mode — that conflict was also what
-    /// made right-click unreliable, since a click on the title used to hit
-    /// a live `TextField` first); a `TextField` once `isEditing` is true.
-    ///
-    /// Return/Tab/⇧Tab are handled here, not via `TextField`'s `onCommit`
-    /// (which only ever means "Return"): all three need to commit whatever
-    /// was typed and then chain a second action — insert-next-sibling for
-    /// Return, indent/outdent for Tab/⇧Tab — onto the *new* id a changed
-    /// title gets, and `onKeyPress` is the one hook that can `return
-    /// .handled` to stop Tab from also doing its default focus-navigation
-    /// thing.
-    @ViewBuilder
-    private var titleField: some View {
-        if isEditing {
-            TextField("", text: $text)
-                .textFieldStyle(.plain)
-                .focusEffectDisabled()
-                .font(depth == 0 ? settings.font(.body) : settings.font(.caption))
-                .focused($isTextFieldFocused)
-                // Deferred a tick: setting `@FocusState` synchronously in
-                // `.onAppear` — right as this exact view is being inserted
-                // into the hierarchy by the same update that created it —
-                // doesn't reliably win real AppKit first-responder status
-                // (observed directly: keyboard input kept landing on
-                // whichever field held focus *before* this row appeared).
-                // Letting the view hierarchy settle for one run-loop turn
-                // first makes the focus claim stick.
-                .onAppear { DispatchQueue.main.async { isTextFieldFocused = true } }
-                .onChange(of: isTextFieldFocused) { _, focused in
-                    // Clicking away (another row, empty space, another
-                    // control) commits and stops editing, no chained action.
-                    if !focused { editing.commit() }
-                }
-                .onKeyPress { press in
-                    switch press.key {
-                    case .escape:
-                        editing.cancel()
-                        return .handled
-                    case .return:
-                        editing.handleReturn()
-                        return .handled
-                    case .tab:
-                        editing.handleTab(outdent: press.modifiers.contains(.shift))
-                        return .handled
-                    case KeyEquivalent("\u{19}"):
-                        // Shift+Tab: confirmed by direct diagnostic —
-                        // AppKit reports it as the distinct "backtab"
-                        // control character (0x19), not as `.tab` plus a
-                        // shift modifier, so the `.tab` case above never
-                        // matches it at all.
-                        editing.handleTab(outdent: true)
-                        return .handled
-                    case .delete, .deleteForward:
-                        // Only on an already-empty field — otherwise Delete
-                        // edits the text as usual. Fresh presses only, so
-                        // holding Backspace to clear a title doesn't carry
-                        // on through and delete the task too.
-                        guard text.isEmpty, press.phase == .down else { return .ignored }
-                        return controller.deleteEmpty(taskID: task.id, keepEditing: true) ? .handled : .ignored
-                    case .upArrow:
-                        editing.handleVerticalNav(direction: -1)
-                        return .handled
-                    case .downArrow:
-                        editing.handleVerticalNav(direction: 1)
-                        return .handled
-                    default:
-                        return .ignored
-                    }
-                }
-        } else {
-            Text(task.displayTitle)
-                .font(depth == 0 ? settings.font(.body) : settings.font(.caption))
-                .strikethrough(task.state == .done)
-                .foregroundStyle(task.state == .done ? .secondary : .primary)
-                // Two settings-driven behaviors when a title is wider than
-                // the column: clip it to one line (`.truncate`), or let it
-                // wrap and grow the row's (and so the column's) height
-                // (`.wrap`) — see `KanbanTitleOverflow`.
-                .lineLimit(settings.kanbanTitleOverflow == .truncate ? 1 : nil)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .onTapGesture(count: 2) { beginEditing() }
+            TaskContextMenuContent(controller: controller, task: task, depth: depth, allowMove: allowMove, onEditNote: onEditNote)
         }
     }
 

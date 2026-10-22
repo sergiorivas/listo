@@ -6,12 +6,21 @@ struct OutlineBoardView: View {
     @ObservedObject private var settings = AppSettings.shared
 
     var body: some View {
+        if controller.document.sections.isEmpty {
+            EmptyBoardView { controller.addSection() }
+        } else {
+            list
+        }
+    }
+
+    private var list: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 ForEach(controller.document.sections, id: \.id) { section in
                     OutlineSection(controller: controller, section: section, depth: 0)
                         .transition(Motion.sectionTransition)
                 }
+                AddSectionButton { controller.addSection() }
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -25,33 +34,27 @@ private struct OutlineSection: View {
     let section: ListoSection
     /// Heading nesting depth (H1/H2/H3), independent of subtask depth.
     let depth: Int
-    @State private var titleText = ""
+    @State private var isHeaderHovering = false
     /// A task row is being dragged over this section (`dropDestination`).
     @State private var isDropTargeted = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 4) {
-                TextField("", text: $titleText, onCommit: {
-                    let trimmed = titleText.trimmingCharacters(in: .whitespaces)
-                    if !trimmed.isEmpty, trimmed != section.title {
-                        controller.renameSection(sectionID: section.id, newTitle: trimmed)
-                    } else {
-                        titleText = section.title
-                    }
-                })
-                .textFieldStyle(.plain)
-                .focusEffectDisabled()
-                .font(headingFont)
-                .onAppear { titleText = section.title }
+                SectionTitleField(controller: controller, section: section, font: headingFont)
 
                 SectionCountBadge(count: controller.filter.count(in: section))
 
-                SectionAddTaskButton { controller.addTaskAndEdit(toSectionID: section.id) }
-                SectionDeleteButton { controller.deleteSection(sectionID: section.id) }
+                SectionHeaderActions(
+                    isVisible: isHeaderHovering,
+                    onAdd: { controller.addTaskAndEdit(toSectionID: section.id) },
+                    onDelete: { controller.deleteSection(sectionID: section.id) }
+                )
 
                 Spacer(minLength: 0)
             }
+            .contentShape(Rectangle())
+            .onHover { isHeaderHovering = $0 }
             .padding(.leading, CGFloat(depth) * 16)
 
             ForEach(controller.filter.visible(section.displayTasks), id: \.id) { task in
@@ -126,10 +129,9 @@ private struct OutlineTaskNode: View {
     let allowMove: Bool
     let onEditNote: (NoteEditTarget) -> Void
     @State private var text = ""
+    @State private var isHovering = false
     @FocusState private var isRowFocused: Bool
-    @FocusState private var isTextFieldFocused: Bool
 
-    private static let maxDepth = ListoEditor.maxSubtaskDepth
     private var leadingPadding: CGFloat { CGFloat(sectionDepth) * 16 + CGFloat(subtaskDepth) * 14 }
     private var isSelected: Bool { controller.isSelected(task.id) }
     /// Whether the title is currently a live `TextField`. Click only
@@ -143,9 +145,6 @@ private struct OutlineTaskNode: View {
     /// a fresh view with fresh `@State`; only shared controller state
     /// survives that swap to keep the new row in edit mode too.
     private var isEditing: Bool { controller.editingTaskID == task.id }
-    private var editing: TitleEditing {
-        TitleEditing(controller: controller, task: task, isEditing: isEditing, text: $text)
-    }
     /// Only a top-level task can carry a note — Listo's tree is
     /// deliberately just task + subtask (see `ListoEditor.setNote`).
     private var canHaveNote: Bool { subtaskDepth == 0 }
@@ -154,16 +153,27 @@ private struct OutlineTaskNode: View {
         VStack(alignment: .leading, spacing: 2) {
             ownRow
 
-            ForEach(controller.filter.visibleSubtasks(of: task), id: \.id) { sub in
-                OutlineTaskNode(
-                    controller: controller,
-                    task: sub,
-                    sectionDepth: sectionDepth,
-                    subtaskDepth: subtaskDepth + 1,
-                    allowMove: false,
-                    onEditNote: onEditNote
-                )
-                .transition(Motion.rowTransition)
+            if !task.subtasks.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(controller.filter.visibleSubtasks(of: task), id: \.id) { sub in
+                        OutlineTaskNode(
+                            controller: controller,
+                            task: sub,
+                            sectionDepth: sectionDepth,
+                            subtaskDepth: subtaskDepth + 1,
+                            allowMove: false,
+                            onEditNote: onEditNote
+                        )
+                        .transition(Motion.rowTransition)
+                    }
+                }
+                // Guide line tying the subtasks to their parent.
+                .overlay(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.secondary.opacity(0.3))
+                        .frame(width: 1.5)
+                        .padding(.leading, leadingPadding + 6)
+                }
             }
         }
     }
@@ -177,39 +187,41 @@ private struct OutlineTaskNode: View {
     /// to already be selected.
     private var ownRow: some View {
         VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 if subtaskDepth > 0 {
                     Image(systemName: "arrow.turn.down.right")
                         .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
                 }
 
-                Button {
+                TaskCheckboxButton(isDone: task.state == .done) {
                     controller.selectedTaskID = task.id
                     isRowFocused = true
                     controller.toggle(taskID: task.id)
-                } label: {
-                    TaskCheckboxIcon(isDone: task.state == .done)
                 }
-                .buttonStyle(.plain)
 
-                titleField
+                // Wraps instead of truncating: the outline has the whole
+                // window width, so a long title shouldn't be cut off.
+                TaskTitleField(
+                    controller: controller,
+                    task: task,
+                    depth: subtaskDepth,
+                    text: $text,
+                    lineLimit: nil,
+                    onBeginEditing: beginEditing
+                )
 
+                if subtaskDepth == 0 { SubtaskProgressBadge(task: task) }
                 PriorityBadge(priority: task.priority, dimmed: task.state == .done)
                 TaskMetaBadges(controller: controller, task: task)
 
                 if canHaveNote, task.note == nil {
-                    Button {
+                    AddNoteButton(isVisible: isHovering || isSelected) {
                         controller.selectedTaskID = task.id
                         isRowFocused = true
                         onEditNote(NoteEditTarget(id: task.id, initialText: ""))
-                    } label: {
-                        Image(systemName: "note.text.badge.plus")
-                            .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.plain)
-                    .opacity(0.35)
-                    .transition(.opacity)
                 }
             }
 
@@ -218,21 +230,16 @@ private struct OutlineTaskNode: View {
             // opened by tapping the note itself. Top-level tasks only;
             // subtasks don't carry notes.
             if canHaveNote, let note = task.note, !note.isEmpty {
-                Text(note)
-                    .font(settings.font(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .padding(.leading, 22)
-                    .transition(Motion.rowTransition)
-                    .onTapGesture {
-                        controller.selectedTaskID = task.id
-                        onEditNote(NoteEditTarget(id: task.id, initialText: note))
-                    }
+                TaskNoteText(note: note) {
+                    controller.selectedTaskID = task.id
+                    onEditNote(NoteEditTarget(id: task.id, initialText: note))
+                }
             }
         }
         .padding(.leading, leadingPadding)
         .padding(.vertical, 2)
         .contentShape(Rectangle())
+        .onHover { isHovering = $0 }
         .rowHighlight(isSelected: isSelected, isFlashing: controller.flashTaskID == task.id)
         .clipShape(RoundedRectangle(cornerRadius: 5))
         .focusable()
@@ -287,154 +294,7 @@ private struct OutlineTaskNode: View {
         }
         .taskDragAndDrop(controller: controller, task: task, showsSubtasks: !controller.filter.visibleSubtasks(of: task).isEmpty)
         .contextMenu {
-            if canHaveNote {
-                Button {
-                    controller.selectedTaskID = task.id
-                    onEditNote(NoteEditTarget(id: task.id, initialText: task.note ?? ""))
-                } label: {
-                    Label(
-                        task.note == nil ? L("note.add", "Agregar nota") : L("note.edit", "Editar nota"),
-                        systemImage: "note.text"
-                    )
-                }
-                Divider()
-            }
-            Button {
-                controller.indent(taskID: task.id)
-            } label: {
-                Label(L("task.indent", "Indentar"), systemImage: "increase.indent")
-            }
-            .disabled(subtaskDepth >= Self.maxDepth)
-            Button {
-                controller.outdent(taskID: task.id)
-            } label: {
-                Label(L("task.outdent", "Quitar indentación"), systemImage: "decrease.indent")
-            }
-            .disabled(subtaskDepth == 0)
-            Button {
-                controller.reorder(taskID: task.id, direction: -1)
-            } label: {
-                Label(L("task.moveUp", "Mover arriba"), systemImage: "arrow.up")
-            }
-            Button {
-                controller.reorder(taskID: task.id, direction: 1)
-            } label: {
-                Label(L("task.moveDown", "Mover abajo"), systemImage: "arrow.down")
-            }
-            Button {
-                controller.split(taskID: task.id)
-            } label: {
-                Label(L("task.split", "Dividir en tareas"), systemImage: "arrow.triangle.branch")
-            }
-            .disabled(task.subtasks.isEmpty)
-            if controller.multiSelectedIDs.contains(task.id) {
-                Button {
-                    controller.group(taskID: task.id)
-                } label: {
-                    Label(L("task.group", "Agrupar en una tarea"), systemImage: "rectangle.stack")
-                }
-            }
-            if allowMove {
-                Menu {
-                    ForEach(controller.document.sections, id: \.id) { s in
-                        Button(s.title) { controller.move(taskID: task.id, toSectionID: s.id) }
-                    }
-                } label: {
-                    Label(L("task.moveTo", "Mover a…"), systemImage: "arrow.turn.up.right")
-                }
-            }
-            Divider()
-            PriorityMenu(controller: controller, task: task)
-            DueMenu(controller: controller, task: task)
-            Divider()
-            Button(role: .destructive) {
-                controller.delete(taskID: task.id)
-            } label: {
-                Label(L("task.delete", "Eliminar"), systemImage: "trash")
-            }
-        }
-    }
-
-    /// Plain text when not editing (so a click just selects the row instead
-    /// of always dropping into rename mode — that conflict was also what
-    /// made right-click unreliable, since a click on the title used to hit
-    /// a live `TextField` first); a `TextField` once `isEditing` is true.
-    ///
-    /// Return/Tab/⇧Tab are handled here, not via `TextField`'s `onCommit`
-    /// (which only ever means "Return"): all three need to commit whatever
-    /// was typed and then chain a second action — insert-next-sibling for
-    /// Return, indent/outdent for Tab/⇧Tab — onto the *new* id a changed
-    /// title gets, and `onKeyPress` is the one hook that can `return
-    /// .handled` to stop Tab from also doing its default focus-navigation
-    /// thing.
-    @ViewBuilder
-    private var titleField: some View {
-        if isEditing {
-            TextField("", text: $text)
-                .textFieldStyle(.plain)
-                .focusEffectDisabled()
-                .font(subtaskDepth == 0 ? settings.font(.body) : settings.font(.caption))
-                .focused($isTextFieldFocused)
-                // Deferred a tick: setting `@FocusState` synchronously in
-                // `.onAppear` — right as this exact view is being inserted
-                // into the hierarchy by the same update that created it —
-                // doesn't reliably win real AppKit first-responder status
-                // (observed directly: keyboard input kept landing on
-                // whichever field held focus *before* this row appeared).
-                // Letting the view hierarchy settle for one run-loop turn
-                // first makes the focus claim stick.
-                .onAppear { DispatchQueue.main.async { isTextFieldFocused = true } }
-                .onChange(of: isTextFieldFocused) { _, focused in
-                    // Clicking away (another row, empty space, another
-                    // control) commits and stops editing, no chained action.
-                    if !focused { editing.commit() }
-                }
-                .onKeyPress { press in
-                    switch press.key {
-                    case .escape:
-                        editing.cancel()
-                        return .handled
-                    case .return:
-                        editing.handleReturn()
-                        return .handled
-                    case .tab:
-                        editing.handleTab(outdent: press.modifiers.contains(.shift))
-                        return .handled
-                    case KeyEquivalent("\u{19}"):
-                        // Shift+Tab: confirmed by direct diagnostic —
-                        // AppKit reports it as the distinct "backtab"
-                        // control character (0x19), not as `.tab` plus a
-                        // shift modifier, so the `.tab` case above never
-                        // matches it at all.
-                        editing.handleTab(outdent: true)
-                        return .handled
-                    case .delete, .deleteForward:
-                        // Only on an already-empty field — otherwise Delete
-                        // edits the text as usual. Fresh presses only, so
-                        // holding Backspace to clear a title doesn't carry
-                        // on through and delete the task too.
-                        guard text.isEmpty, press.phase == .down else { return .ignored }
-                        return controller.deleteEmpty(taskID: task.id, keepEditing: true) ? .handled : .ignored
-                    case .upArrow:
-                        editing.handleVerticalNav(direction: -1)
-                        return .handled
-                    case .downArrow:
-                        editing.handleVerticalNav(direction: 1)
-                        return .handled
-                    default:
-                        return .ignored
-                    }
-                }
-        } else {
-            Text(task.displayTitle)
-                .font(subtaskDepth == 0 ? settings.font(.body) : settings.font(.caption))
-                .strikethrough(task.state == .done)
-                .foregroundStyle(task.state == .done ? .secondary : .primary)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .onTapGesture(count: 2) { beginEditing() }
+            TaskContextMenuContent(controller: controller, task: task, depth: subtaskDepth, allowMove: allowMove, onEditNote: onEditNote)
         }
     }
 
