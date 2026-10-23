@@ -194,6 +194,19 @@ enum LocalizationTable {
         ],
 
         "menu.newList": ["es": "Nueva lista", "en": "New list"],
+        "start.title": ["es": "Elegí una lista", "en": "Choose a list"],
+        "start.message.noRecents": [
+            "es": "Abrí un archivo de tareas existente o creá un documento nuevo.",
+            "en": "Open an existing todo file or create a new document.",
+        ],
+        "start.message.recents": [
+            "es": "Abrí un archivo reciente, buscá uno existente o creá un documento nuevo.",
+            "en": "Open a recent file, find an existing one, or create a new document.",
+        ],
+        "start.openRecent": ["es": "Abrir reciente", "en": "Open Recent"],
+        "start.openFile": ["es": "Abrir archivo…", "en": "Open File…"],
+        "start.new": ["es": "Nuevo documento", "en": "New Document"],
+        "start.quit": ["es": "Salir", "en": "Quit"],
         "menu.recent": ["es": "Abrir reciente", "en": "Open Recent"],
         "menu.recent.empty": ["es": "Sin archivos recientes", "en": "No recent files"],
         "menu.recent.clear": ["es": "Borrar recientes", "en": "Clear Recents"],

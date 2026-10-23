@@ -204,14 +204,17 @@ edited. This stays purely in-memory (spec §09: never written to the file).
   fixed in English regardless of the language chosen in Settings. The
   user's own task content (`text`, titles) is never translated, as §07
   already established for the rest of the app.
-- **Always at least one document open.** `ListoAppDelegate` observes
-  `NSWindow.willCloseNotification` and, a runloop turn later (the closing
-  document is still registered during `willClose`), opens a replacement if
-  `NSDocumentController.documents` is empty: the most recent existing file
-  *other than the one just closed* (else that one, if it's the only recent),
-  else a blank untitled list. Preferring a different file avoids the window
-  appearing to be unclosable. Quit is exempt (`isTerminating`, set in
-  `applicationWillTerminate`). Not verified with a live GUI run.
+- **Start prompt instead of a blank list.** `ListoAppDelegate` never lets an
+  untitled document appear on its own. Launch: open the most recent file that
+  still exists, else show an `NSAlert` (existing file / new document / quit).
+  Closing the last window (`NSWindow.willCloseNotification`, a runloop turn
+  later) or a Dock click with no windows: the same alert, plus a popup of the
+  recent files. `DocumentGroup` still makes a blank document at launch, so the
+  launch routine (0.25s delayed so a Finder double-click wins) closes a blank,
+  unedited one; `isLaunching` stops that close from prompting. A cancelled open
+  panel re-prompts so the app is never left empty; Quit is exempt
+  (`isTerminating`). Replaced the earlier "reopen a different recent file on
+  close" behaviour. Not verified with a live GUI run.
 
 - Release distribution is ad-hoc signed + `xattr -cr`, not notarized:
   getting a real Developer ID would mean a paid Apple Developer account

@@ -232,86 +232,135 @@ private struct UndoRedoCommands: Commands {
     }
 }
 
-/// Reopens the last document on launch instead of a blank "untitled" list,
-/// and backs the app's own "Abrir reciente" menu.
+/// Decides what the app shows when nothing is open.
 ///
-/// Belt and suspenders: `applicationShouldOpenUntitledFile` is the
-/// documented hook for this, but SwiftUI's `DocumentGroup` doesn't always
-/// consistently route through it before creating its own blank document —
-/// so `applicationDidFinishLaunching` also checks, shortly after launch,
-/// whether the only window open is an untitled/unedited one and swaps it
-/// for the real file if so. Either path is a no-op once the last file is
-/// already open.
+/// - Launch: the most recently opened file that still exists is opened
+///   straight away; with none, the start prompt asks for an existing file or
+///   a new document.
+/// - Closing the last document: the start prompt again, now also listing the
+///   recent files.
+///
+/// `DocumentGroup` creates its own blank document at launch regardless of
+/// `applicationShouldOpenUntitledFile`, so `applicationDidFinishLaunching`
+/// swaps a blank, unedited one for the real choice.
 final class ListoAppDelegate: NSObject, NSApplicationDelegate {
-    func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
-        !openLastFileIfNeeded()
+    private var isTerminating = false
+    /// True from launch until the launch routine has opened (or prompted),
+    /// so closing the blank document it replaces doesn't trigger a second
+    /// prompt.
+    private var isLaunching = true
+    private var isPrompting = false
+
+    func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { false }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { DispatchQueue.main.async { [weak self] in self?.ensureDocumentOpen() } }
+        return false
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        DispatchQueue.main.async { [weak self] in
-            self?.openLastFileIfNeeded()
-        }
         NotificationCenter.default.addObserver(
             self, selector: #selector(windowWillClose(_:)),
             name: NSWindow.willCloseNotification, object: nil)
+        // A beat of delay so a file double-clicked in Finder (delivered just
+        // after launch) wins over the "last file" logic.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            self?.launchRoutine()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         isTerminating = true
     }
 
-    // MARK: Always keep one file open
-
-    private var isTerminating = false
-
-    /// Closing the last document window would leave the app running with
-    /// nothing open, so open another file in its place: the most recent one
-    /// that still exists (preferring one other than the file just closed, so
-    /// closing doesn't just bounce the same file straight back), or a blank
-    /// list if there are none. Deferred a runloop turn because the closing
-    /// document is still registered with `NSDocumentController` while
-    /// `willClose` fires. Quitting is exempt.
-    @objc private func windowWillClose(_ notification: Notification) {
-        let window = notification.object as? NSWindow
-        let closed = (window?.windowController?.document as? NSDocument)?.fileURL
-        DispatchQueue.main.async { [weak self] in
-            self?.ensureDocumentOpen(closed: closed)
+    private func launchRoutine() {
+        defer { isLaunching = false }
+        let docs = NSDocumentController.shared.documents
+        // Something real is already open (Finder double-click, restored
+        // window): leave it. Never close a document the user typed into.
+        guard docs.allSatisfy({ $0.fileURL == nil && !$0.isDocumentEdited }) else { return }
+        docs.forEach { $0.close() }
+        if let last = existingRecents().first {
+            open(last)
+        } else {
+            showStartPrompt(recents: [])
         }
     }
 
-    private func ensureDocumentOpen(closed: URL?) {
-        guard !isTerminating, NSDocumentController.shared.documents.isEmpty else { return }
-        let existing = RecentFilesStore.shared.recentURLs
-            .filter { FileManager.default.fileExists(atPath: $0.path) }
-        guard let target = existing.first(where: { $0 != closed }) ?? existing.first else {
-            NSDocumentController.shared.newDocument(nil)
-            return
-        }
-        NSDocumentController.shared.openDocument(withContentsOf: target, display: true) { document, _, _ in
+    @objc private func windowWillClose(_ notification: Notification) {
+        // Deferred a runloop turn: the closing document is still registered
+        // with `NSDocumentController` while `willClose` fires.
+        DispatchQueue.main.async { [weak self] in self?.ensureDocumentOpen() }
+    }
+
+    private func ensureDocumentOpen() {
+        guard !isTerminating, !isLaunching, !isPrompting,
+              NSDocumentController.shared.documents.isEmpty else { return }
+        showStartPrompt(recents: existingRecents())
+    }
+
+    private func existingRecents() -> [URL] {
+        RecentFilesStore.shared.recentURLs.filter { FileManager.default.fileExists(atPath: $0.path) }
+    }
+
+    private func open(_ url: URL) {
+        NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { [weak self] document, _, _ in
             if document == nil, NSDocumentController.shared.documents.isEmpty {
-                NSDocumentController.shared.newDocument(nil)
+                self?.showStartPrompt(recents: self?.existingRecents() ?? [])
             }
         }
     }
 
-    @discardableResult
-    private func openLastFileIfNeeded() -> Bool {
-        guard let last = RecentFilesStore.shared.lastOpenedURL,
-              FileManager.default.fileExists(atPath: last.path) else {
-            return false
+    /// Existing file / recent file / new document, or quit. Looping on a
+    /// cancelled open panel so the user is never left with an empty app.
+    private func showStartPrompt(recents: [URL]) {
+        guard !isPrompting else { return }
+        isPrompting = true
+        defer { isPrompting = false }
+
+        let alert = NSAlert()
+        alert.messageText = L("start.title", "Elegí una lista")
+        alert.informativeText = recents.isEmpty
+            ? L("start.message.noRecents", "Abrí un archivo de tareas existente o creá un documento nuevo.")
+            : L("start.message.recents", "Abrí un archivo reciente, buscá uno existente o creá un documento nuevo.")
+
+        var popup: NSPopUpButton?
+        if !recents.isEmpty {
+            let button = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 320, height: 26), pullsDown: false)
+            for url in recents {
+                button.addItem(withTitle: url.lastPathComponent)
+                button.lastItem?.toolTip = url.path
+            }
+            alert.accessoryView = button
+            popup = button
+            alert.addButton(withTitle: L("start.openRecent", "Abrir reciente"))
         }
-        let docs = NSDocumentController.shared.documents
-        guard !docs.contains(where: { $0.fileURL == last }) else {
-            return true // already open
+        alert.addButton(withTitle: L("start.openFile", "Abrir archivo…"))
+        alert.addButton(withTitle: L("start.new", "Nuevo documento"))
+        alert.addButton(withTitle: L("start.quit", "Salir"))
+
+        NSApp.activate(ignoringOtherApps: true)
+        var response = alert.runModal().rawValue - NSApplication.ModalResponse.alertFirstButtonReturn.rawValue
+        if popup == nil { response += 1 } // no "Abrir reciente" button
+        switch response {
+        case 0:
+            if let index = popup?.indexOfSelectedItem, recents.indices.contains(index) {
+                open(recents[index])
+            }
+        case 1:
+            NSDocumentController.shared.beginOpenPanel { [weak self] urls in
+                guard let self else { return }
+                guard let urls, !urls.isEmpty else {
+                    DispatchQueue.main.async { self.ensureDocumentOpen() }
+                    return
+                }
+                urls.forEach { self.open($0) }
+            }
+        case 2:
+            NSDocumentController.shared.newDocument(nil)
+        default:
+            NSApp.terminate(nil)
         }
-        // Only safe to replace documents that are blank/untitled and have
-        // no unsaved work — never close something the user actually typed.
-        guard docs.allSatisfy({ $0.fileURL == nil && !$0.isDocumentEdited }) else {
-            return false
-        }
-        docs.forEach { $0.close() }
-        NSDocumentController.shared.openDocument(withContentsOf: last, display: true) { _, _, _ in }
-        return true
     }
 }
 
