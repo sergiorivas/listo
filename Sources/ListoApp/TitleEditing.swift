@@ -3,13 +3,15 @@ import ListoEngine
 
 /// The title-field editing flow shared by the Kanban and Outline rows: how
 /// commit, cancel, Return, Tab/⇧Tab and ↑/↓ behave while a task's title is a
-/// live text field. A row builds one from its own state each time it needs it.
+/// live text field. A row builds one each time it needs it; the field's text
+/// is `controller.editingText`.
 @MainActor
 struct TitleEditing {
     let controller: DocumentController
     let task: ListoTask
     let isEditing: Bool
-    @Binding var text: String
+
+    private var text: String { controller.editingText }
 
     /// Commits the title if changed, without chaining any further action —
     /// used when editing ends because focus just left the field (a click
@@ -31,8 +33,6 @@ struct TitleEditing {
         let renamed = !trimmed.isEmpty && trimmed != task.text
         if renamed {
             controller.rename(taskID: task.id, newText: trimmed)
-        } else {
-            text = task.text
         }
         controller.editingTaskID = nil
         if trimmed.isEmpty { controller.discardIfBlank(taskID: task.id) }
@@ -41,7 +41,6 @@ struct TitleEditing {
 
     func cancel() {
         guard isEditing else { return }
-        text = task.text
         controller.editingTaskID = nil
         controller.discardIfBlank(taskID: task.id)
     }
@@ -61,11 +60,6 @@ struct TitleEditing {
             controller.rename(taskID: task.id, newText: trimmed)
         }
         controller.insertSiblingAndEdit(afterTaskID: controller.editingTaskID ?? task.id)
-        // Blank ids key on the previous sibling (see the parser), so the new
-        // blank normally gets a fresh view. Should it ever land on this row's
-        // id anyway, SwiftUI would reuse this view and its `text` without
-        // `.onAppear`/`.onChange(of: isEditing)` firing — so clear it by hand.
-        text = ""
     }
 
     /// Tab/⇧Tab: commit whatever was typed, then indent/outdent — following

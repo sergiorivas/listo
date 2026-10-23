@@ -380,7 +380,6 @@ private struct TaskRow: View {
     /// Only a genuine top-level task can move to a different section.
     let allowMove: Bool
     let onEditNote: (NoteEditTarget) -> Void
-    @State private var text = ""
     @State private var isHovering = false
     @FocusState private var isRowFocused: Bool
 
@@ -449,7 +448,6 @@ private struct TaskRow: View {
                     controller: controller,
                     task: task,
                     depth: depth,
-                    text: $text,
                     lineLimit: settings.kanbanTitleOverflow == .truncate ? 1 : nil,
                     onBeginEditing: beginEditing
                 )
@@ -518,21 +516,6 @@ private struct TaskRow: View {
                 return .ignored
             }
         }
-        .onAppear { text = task.text }
-        // Not just `.onAppear`: two sibling tasks with the same text (most
-        // commonly two blank ones — type into a blank task, hit Return, and
-        // the fresh blank sibling `insertSiblingAndEdit` creates hashes to
-        // the very id the just-renamed task had *before* it got its new
-        // text — see StableID's per-parse, seed-ordinal disambiguation) can
-        // land on the same content-derived id at different points in time.
-        // SwiftUI then sees "the same row" and reuses this view's `@State
-        // text` instead of mounting a fresh one, so the new row would start
-        // out showing whatever was last typed here. Re-syncing whenever
-        // *this row* becomes the edit target — not only when it first
-        // appears — keeps the field correct regardless of view reuse.
-        .onChange(of: isEditing) { _, editing in
-            if editing { text = task.text }
-        }
         .taskDragAndDrop(controller: controller, task: task, showsSubtasks: !controller.filter.visibleSubtasks(of: task).isEmpty)
         .contextMenu {
             TaskContextMenuContent(controller: controller, task: task, depth: depth, allowMove: allowMove, onEditNote: onEditNote)
@@ -540,7 +523,6 @@ private struct TaskRow: View {
     }
 
     private func beginEditing() {
-        text = task.text
         controller.selectedTaskID = task.id
         controller.editingTaskID = task.id
     }

@@ -170,6 +170,39 @@ final class DocumentControllerTests: XCTestCase {
         XCTAssertEqual(c.document.sections[0].tasks.map(\.text), ["A", "", "B", "C", "D"])
     }
 
+    /// Return/↑ from the title field act on `editingText`, what the field
+    /// holds — the typed title is kept and only a still-empty row goes away.
+    func testReturnChainKeepsTypedTitlesAndUpKeepsThem() {
+        let c = makeController(list)
+        c.selectedTaskID = task(c, "A").id
+        c.editingTaskID = task(c, "A").id
+        XCTAssertEqual(c.editingText, "A")
+        func editing() -> TitleEditing {
+            TitleEditing(controller: c, task: c.document.allTasksRecursive.first { $0.id == c.editingTaskID }!, isEditing: true)
+        }
+        editing().handleReturn()
+        XCTAssertEqual(c.editingText, "")
+        c.editingText = "foo"
+        editing().handleReturn()
+        XCTAssertEqual(c.editingText, "")
+        c.editingText = "bar"
+        editing().handleVerticalNav(direction: -1)
+        XCTAssertEqual(c.document.sections[0].tasks.map(\.text), ["A", "foo", "bar", "B", "C", "D"])
+        XCTAssertEqual(c.editingTaskID, task(c, "foo").id)
+        XCTAssertEqual(c.editingText, "foo")
+    }
+
+    func testReturnOnEmptyNewRowDiscardsIt() {
+        let c = makeController(list)
+        c.selectedTaskID = task(c, "A").id
+        c.editingTaskID = task(c, "A").id
+        TitleEditing(controller: c, task: task(c, "A"), isEditing: true).handleReturn()
+        let blank = c.document.allTasksRecursive.first { $0.id == c.editingTaskID }!
+        TitleEditing(controller: c, task: blank, isEditing: true).handleReturn()
+        XCTAssertEqual(c.document.sections[0].tasks.map(\.text), ["A", "B", "C", "D"])
+        XCTAssertNil(c.editingTaskID)
+    }
+
     // MARK: - Filter
 
     func testNavigationSkipsTasksTheFilterHides() {

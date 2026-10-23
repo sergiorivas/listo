@@ -71,18 +71,20 @@ scattered at every depth) for no real benefit.
   content-derived id the blank row had before it was renamed, so SwiftUI
   reuses the view and its `@State text`. The earlier guard (`.onAppear` +
   `.onChange(of: isEditing)`) can't catch it: `editingTaskID` goes X → X
-  within a single event and `task.text` is `""` both times. `handleReturn`
-  (Kanban and Outline) now clears `text` itself after
-  `insertSiblingAndEdit`. The first blank task worked only because it came
-  from a different id.
-- **Return-chained new task vanishing (Kanban)**: the `text = ""` fix above
-  only treated the symptom. The reused row also moves down a slot (the
-  renamed task is inserted above it), its title field loses AppKit focus,
-  and the focus-loss commit sees an empty title and `discardIfBlank` deletes
-  the fresh blank, so the chain broke on the second Return. Fixed at the
-  source: a blank task's `StableID` seed also includes the text of the
-  sibling before it (`after:<text>`), so the next blank gets a new id and a
-  new view, like the first one did. Not run in the live GUI.
+  within a single event and `task.text` is `""` both times. Superseded:
+  the title text now lives in the controller (next entry).
+- **Typed title lost on Return/↑ (new task vanishing)**: in release builds
+  the row's own `@State text` didn't reliably receive the title field's
+  keystrokes, so Return/↑ read an empty title and `discardIfBlank` deleted
+  the task just typed into. A debug build happened to work, and so did
+  controller tests; only a logged release build showed `field=''` on every
+  Return. The live title now lives in `DocumentController.editingText`,
+  re-seeded from the task whenever `editingTaskID` is assigned. That also
+  replaces the row-level re-sync hacks (`.onAppear`/`.onChange(of:
+  isEditing)` and `text = ""` in `handleReturn`) for reused rows. An
+  earlier attempt keyed blank tasks' `StableID` on the previous sibling
+  (`after:<text>`), so a Return-chained blank no longer reuses the old
+  blank's id; that is kept but was not the cause.
 - **Can't edit a subtask's note** (historical, before subtasks lost note
   support entirely — see "Two-level model" above): each subtask row had its
   own `.popover(item:)` *nested inside* the parent `TaskChip`/

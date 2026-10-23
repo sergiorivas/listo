@@ -171,7 +171,6 @@ struct TaskTitleField: View {
     @ObservedObject private var settings = AppSettings.shared
     let task: ListoTask
     let depth: Int
-    @Binding var text: String
     /// `1` truncates a long title to one line, `nil` lets it wrap.
     let lineLimit: Int?
     let onBeginEditing: () -> Void
@@ -179,13 +178,13 @@ struct TaskTitleField: View {
 
     private var isEditing: Bool { controller.editingTaskID == task.id }
     private var editing: TitleEditing {
-        TitleEditing(controller: controller, task: task, isEditing: isEditing, text: $text)
+        TitleEditing(controller: controller, task: task, isEditing: isEditing)
     }
     private var font: Font { depth == 0 ? settings.font(.body) : settings.font(.caption) }
 
     var body: some View {
         if isEditing {
-            TextField("", text: $text)
+            TextField("", text: $controller.editingText)
                 .textFieldStyle(.plain)
                 .focusEffectDisabled()
                 .font(font)
@@ -228,7 +227,7 @@ struct TaskTitleField: View {
                         // edits the text as usual. Fresh presses only, so
                         // holding Backspace to clear a title doesn't carry
                         // on through and delete the task too.
-                        guard text.isEmpty, press.phase == .down else { return .ignored }
+                        guard controller.editingText.isEmpty, press.phase == .down else { return .ignored }
                         return controller.deleteEmpty(taskID: task.id, keepEditing: true) ? .handled : .ignored
                     case .upArrow:
                         editing.handleVerticalNav(direction: -1)

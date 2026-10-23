@@ -64,7 +64,16 @@ final class DocumentController: ObservableObject {
     /// (`StableID`): shared controller state can follow the id to the row
     /// that replaces this one, where per-row `@State` would just be
     /// discarded along with the old row, silently dropping out of edit mode.
-    @Published var editingTaskID: UUID?
+    @Published var editingTaskID: UUID? {
+        didSet { editingText = editingTaskID.flatMap { id in document.allTasksRecursive.first { $0.id == id }?.text } ?? "" }
+    }
+    /// What the live title field holds, re-seeded from the task's title every
+    /// time `editingTaskID` is assigned. Kept here rather than as row `@State`
+    /// for the same reason as `editingTaskID`, and because the row's own
+    /// state didn't reliably receive the keystrokes in release builds: Return
+    /// then read an empty title and discarded the task the user had just
+    /// typed into.
+    @Published var editingText = ""
     /// A section whose title field should take focus (just created by
     /// `addSection`); the field clears it once it has claimed focus.
     @Published var focusSectionID: UUID?
