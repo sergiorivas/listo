@@ -250,6 +250,9 @@ final class ListoAppDelegate: NSObject, NSApplicationDelegate {
     /// prompt.
     private var isLaunching = true
     private var isPrompting = false
+    /// Opens in flight: the document isn't registered until the completion
+    /// runs, so the "nothing is open" check must not fire meanwhile.
+    private var pendingOpens = 0
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { false }
 
@@ -274,15 +277,21 @@ final class ListoAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func launchRoutine() {
-        defer { isLaunching = false }
         let docs = NSDocumentController.shared.documents
         // Something real is already open (Finder double-click, restored
         // window): leave it. Never close a document the user typed into.
-        guard docs.allSatisfy({ $0.fileURL == nil && !$0.isDocumentEdited }) else { return }
+        guard docs.allSatisfy({ $0.fileURL == nil && !$0.isDocumentEdited }) else {
+            isLaunching = false
+            return
+        }
         docs.forEach { $0.close() }
         if let last = existingRecents().first {
             open(last)
+            // The close above queued a "window closed" check; let it pass
+            // while the guard is still up, then release it.
+            DispatchQueue.main.async { [weak self] in self?.isLaunching = false }
         } else {
+            isLaunching = false
             showStartPrompt(recents: [])
         }
     }
@@ -294,7 +303,7 @@ final class ListoAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func ensureDocumentOpen() {
-        guard !isTerminating, !isLaunching, !isPrompting,
+        guard !isTerminating, !isLaunching, !isPrompting, pendingOpens == 0,
               NSDocumentController.shared.documents.isEmpty else { return }
         showStartPrompt(recents: existingRecents())
     }
@@ -304,7 +313,9 @@ final class ListoAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func open(_ url: URL) {
+        pendingOpens += 1
         NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { [weak self] document, _, _ in
+            self?.pendingOpens -= 1
             if document == nil, NSDocumentController.shared.documents.isEmpty {
                 self?.showStartPrompt(recents: self?.existingRecents() ?? [])
             }
