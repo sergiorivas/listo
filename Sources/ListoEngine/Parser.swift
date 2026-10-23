@@ -146,15 +146,22 @@ public enum ListoParser {
                 // differ and every view work with the clean text.
                 let (text, priority) = TaskPriority.split(rawText)
 
+                // A blank title also keys on the sibling before it. Otherwise
+                // Return-chaining (type into a blank row, Return) gives the
+                // fresh blank the id the row just renamed away from, SwiftUI
+                // reuses that row's view, the title field loses focus as it
+                // shifts down, and the focus-loss commit discards the blank.
+                let titleKey = text.isEmpty ? "|after:\(lastTaskAtLevel[level]?.text ?? "")" : text
+
                 let taskID: UUID
                 if level == 0 {
                     let sectionKey = currentTargetSection()?.id.uuidString ?? "loose"
-                    taskID = nextID(seed: "task|\(sectionKey)|top|\(text)")
+                    taskID = nextID(seed: "task|\(sectionKey)|top|\(titleKey)")
                 } else if let parentTask = lastTaskAtLevel[level - 1] {
-                    taskID = nextID(seed: "task|sub|\(parentTask.id.uuidString)|\(text)")
+                    taskID = nextID(seed: "task|sub|\(parentTask.id.uuidString)|\(titleKey)")
                 } else {
                     let sectionKey = currentTargetSection()?.id.uuidString ?? "loose"
-                    taskID = nextID(seed: "task|\(sectionKey)|fallback|\(text)")
+                    taskID = nextID(seed: "task|\(sectionKey)|fallback|\(titleKey)")
                 }
                 let task = ListoTask(id: taskID, text: text, state: state, priority: priority, lineRange: idx..<(idx + 1))
 

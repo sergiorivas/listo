@@ -61,11 +61,10 @@ struct TitleEditing {
             controller.rename(taskID: task.id, newText: trimmed)
         }
         controller.insertSiblingAndEdit(afterTaskID: controller.editingTaskID ?? task.id)
-        // The sibling just inserted is blank, and when *this* row was itself
-        // a blank one its id is the very id the new blank gets — so SwiftUI
-        // keeps this view (and its `text`) for it, and neither `.onAppear`
-        // nor `.onChange(of: isEditing)` fires (editing goes X -> X within
-        // one event). Clear the field by hand or it shows what was just typed.
+        // Blank ids key on the previous sibling (see the parser), so the new
+        // blank normally gets a fresh view. Should it ever land on this row's
+        // id anyway, SwiftUI would reuse this view and its `text` without
+        // `.onAppear`/`.onChange(of: isEditing)` firing — so clear it by hand.
         text = ""
     }
 

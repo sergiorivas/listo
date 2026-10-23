@@ -75,6 +75,14 @@ scattered at every depth) for no real benefit.
   (Kanban and Outline) now clears `text` itself after
   `insertSiblingAndEdit`. The first blank task worked only because it came
   from a different id.
+- **Return-chained new task vanishing (Kanban)**: the `text = ""` fix above
+  only treated the symptom. The reused row also moves down a slot (the
+  renamed task is inserted above it), its title field loses AppKit focus,
+  and the focus-loss commit sees an empty title and `discardIfBlank` deletes
+  the fresh blank, so the chain broke on the second Return. Fixed at the
+  source: a blank task's `StableID` seed also includes the text of the
+  sibling before it (`after:<text>`), so the next blank gets a new id and a
+  new view, like the first one did. Not run in the live GUI.
 - **Can't edit a subtask's note** (historical, before subtasks lost note
   support entirely — see "Two-level model" above): each subtask row had its
   own `.popover(item:)` *nested inside* the parent `TaskChip`/

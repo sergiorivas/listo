@@ -19,6 +19,21 @@ final class EditorTests: XCTestCase {
         ListoEditor(fileURL: fileURL, initialText: text)
     }
 
+    func testReturnChainedBlankDoesNotReuseRenamedBlanksID() throws {
+        let editor = makeEditor("# Todo\n- [ ] A\n- [ ] B\n")
+        let a = editor.document.sections[0].tasks[0]
+        _ = try editor.insertTaskAfter(taskID: a.id, text: "")
+        let firstBlank = try XCTUnwrap(editor.lastActionTaskID)
+        _ = try editor.renameTask(taskID: firstBlank, newText: "foo")
+        let foo = try XCTUnwrap(editor.lastActionTaskID)
+        _ = try editor.insertTaskAfter(taskID: foo, text: "")
+        let secondBlank = try XCTUnwrap(editor.lastActionTaskID)
+        XCTAssertEqual(editor.document.sections[0].tasks.map(\.text), ["A", "foo", "", "B"])
+        // A reused id makes SwiftUI reuse the old row, whose field then loses
+        // focus and discards the new blank.
+        XCTAssertNotEqual(secondBlank, firstBlank)
+    }
+
     func testAddTaskWritesMinimalLine() throws {
         let editor = makeEditor("# ahora\n- [ ] Existing\n\n# mas tarde\n")
         let section = editor.document.sections[0]
