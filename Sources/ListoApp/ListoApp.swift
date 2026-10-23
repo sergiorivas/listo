@@ -254,6 +254,30 @@ final class ListoAppDelegate: NSObject, NSApplicationDelegate {
     /// runs, so the "nothing is open" check must not fire meanwhile.
     private var pendingOpens = 0
 
+    override init() {
+        super.init()
+        // `DocumentGroup` shows its own blank document before the launch
+        // routine can replace it; keep that window invisible meanwhile.
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(windowDidUpdate(_:)),
+            name: NSWindow.didUpdateNotification, object: nil)
+    }
+
+    @objc private func windowDidUpdate(_ notification: Notification) {
+        guard isLaunching, let window = notification.object as? NSWindow,
+              isBlankDocumentWindow(window) else { return }
+        window.alphaValue = 0
+    }
+
+    private func isBlankDocumentWindow(_ window: NSWindow) -> Bool {
+        guard let document = window.windowController?.document as? NSDocument else { return false }
+        return document.fileURL == nil && !document.isDocumentEdited
+    }
+
+    private func showAllWindows() {
+        NSApp.windows.forEach { $0.alphaValue = 1 }
+    }
+
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool { false }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -282,6 +306,7 @@ final class ListoAppDelegate: NSObject, NSApplicationDelegate {
         // window): leave it. Never close a document the user typed into.
         guard docs.allSatisfy({ $0.fileURL == nil && !$0.isDocumentEdited }) else {
             isLaunching = false
+            showAllWindows()
             return
         }
         docs.forEach { $0.close() }
@@ -292,6 +317,7 @@ final class ListoAppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async { [weak self] in self?.isLaunching = false }
         } else {
             isLaunching = false
+            showAllWindows()
             showStartPrompt(recents: [])
         }
     }
