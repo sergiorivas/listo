@@ -6,6 +6,7 @@ struct KanbanView: View {
     @ObservedObject var controller: DocumentController
     @ObservedObject private var settings = AppSettings.shared
     @ObservedObject private var layout = KanbanLayoutStore.shared
+    @Namespace private var selectionNamespace
 
     static let columnSpacing: CGFloat = 16
     static let horizontalPadding: CGFloat = 16
@@ -37,6 +38,7 @@ struct KanbanView: View {
                 .background(Color(nsColor: .windowBackgroundColor))
         } else {
             board
+                .selectionGlide(in: selectionNamespace)
         }
     }
 
@@ -461,6 +463,8 @@ private struct TaskRow: View {
                 PriorityBadge(priority: task.priority, dimmed: task.state == .done)
                 TaskMetaBadges(controller: controller, task: task)
 
+                Spacer(minLength: 0)
+
                 if canHaveNote, task.note == nil {
                     AddNoteButton(isVisible: isHovering || isSelected) {
                         controller.selectedTaskID = task.id
@@ -484,8 +488,11 @@ private struct TaskRow: View {
         .padding(4)
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
-        .rowHighlight(isSelected: isSelected, isFlashing: controller.flashTaskID == task.id)
-        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .rowHighlight(
+            isSelected: isSelected,
+            isCursor: controller.selectedTaskID == task.id,
+            isFlashing: controller.flashTaskID == task.id
+        )
         .focusable()
         .focusEffectDisabled()
         .focused($isRowFocused)

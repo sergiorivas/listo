@@ -21,6 +21,8 @@ enum Motion {
     static var quick: Animation? { reduceMotion ? nil : .easeOut(duration: 0.18) }
     /// Selection highlight following ↑/↓ or a click.
     static var selection: Animation? { reduceMotion ? nil : .easeInOut(duration: 0.12) }
+    /// The cursor highlight gliding from one row to the next.
+    static var selectionGlide: Animation? { reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.82) }
     /// The fade-out at the end of a `RowHighlight` flash.
     static var flashFade: Animation? { reduceMotion ? nil : .easeOut(duration: 0.5) }
 
@@ -56,24 +58,61 @@ struct TaskCheckboxIcon: View {
 
 /// The selection highlight plus the brief "look here" flash used after a
 /// row jumps somewhere (re-prioritised, moved, indented) —
-/// `DocumentController.flashTaskID`. Replaces the plain
-/// `.background(isSelected ? ... : .clear)` both views used; the colour and
-/// (lack of) border are unchanged, it just fades instead of snapping.
+/// `DocumentController.flashTaskID`. Colour and (lack of) border match the
+/// original plain `.background(isSelected ? ... : .clear)`.
+///
+/// The cursor's highlight (`isCursor`, the row `selectedTaskID` names) is one
+/// shape shared across rows through `matchedGeometryEffect`, so moving the
+/// selection — click, ↑/↓ — glides it from the old row to the new one and
+/// it settles with a slight spring. Other rows of a multi-selection keep a
+/// plain fade (a matched id can only have one source). The glide is driven
+/// by each row's own `.animation(value: isCursor)`, not by an animation on
+/// the board: a rename gives the row a new id and moves the selection with
+/// it, and a board-wide animation would fade the renamed row out and in.
+/// The highlight is a rounded shape rather than a fill clipped by the row,
+/// since a clip would hide the highlight while it's in flight.
 struct RowHighlight: ViewModifier {
     let isSelected: Bool
+    let isCursor: Bool
     let isFlashing: Bool
+    @Environment(\.selectionNamespace) private var namespace
+
+    private static let shape = RoundedRectangle(cornerRadius: 5)
+    private static let fill = Color.accentColor.opacity(0.22)
 
     func body(content: Content) -> some View {
         content
             .background {
-                Color.accentColor.opacity(isSelected ? 0.22 : 0)
-                    .animation(Motion.selection, value: isSelected)
+                ZStack {
+                    if isCursor, let namespace, !Motion.reduceMotion {
+                        Self.shape.fill(Self.fill)
+                            .matchedGeometryEffect(id: "selection", in: namespace)
+                    } else if isSelected {
+                        Self.shape.fill(Self.fill)
+                            .transition(.opacity)
+                    }
+                }
+                .animation(Motion.selectionGlide, value: isCursor)
+                .animation(Motion.selection, value: isSelected)
             }
             .overlay {
-                Color.accentColor.opacity(isFlashing ? 0.35 : 0)
+                Self.shape.fill(Color.accentColor.opacity(isFlashing ? 0.35 : 0))
                     .allowsHitTesting(false)
                     .animation(Motion.quick, value: isFlashing)
             }
+    }
+}
+
+private struct SelectionNamespaceKey: EnvironmentKey {
+    static let defaultValue: Namespace.ID? = nil
+}
+
+extension EnvironmentValues {
+    /// The board's namespace for `RowHighlight`'s gliding selection; `nil`
+    /// (no glide, plain fade) outside a board.
+    var selectionNamespace: Namespace.ID? {
+        get { self[SelectionNamespaceKey.self] }
+        set { self[SelectionNamespaceKey.self] = newValue }
     }
 }
 
@@ -135,8 +174,13 @@ extension View {
         modifier(PulseOnChange(value: value, scale: scale))
     }
 
-    func rowHighlight(isSelected: Bool, isFlashing: Bool) -> some View {
-        modifier(RowHighlight(isSelected: isSelected, isFlashing: isFlashing))
+    func rowHighlight(isSelected: Bool, isCursor: Bool, isFlashing: Bool) -> some View {
+        modifier(RowHighlight(isSelected: isSelected, isCursor: isCursor, isFlashing: isFlashing))
+    }
+
+    /// Lets the rows below share one gliding selection highlight.
+    func selectionGlide(in namespace: Namespace.ID) -> some View {
+        environment(\.selectionNamespace, namespace)
     }
 
     func dropTargetHighlight(_ isTargeted: Bool, cornerRadius: CGFloat = 10) -> some View {

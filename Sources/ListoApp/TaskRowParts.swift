@@ -247,7 +247,9 @@ struct TaskTitleField: View {
                 .foregroundStyle(task.state == .done ? .secondary : .primary)
                 .lineLimit(lineLimit)
                 .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                // Hugs its text (no `maxWidth: .infinity`) so the progress,
+                // priority and metadata badges sit right after the title,
+                // not stranded at the far edge; the row adds the spacer.
                 .contentShape(Rectangle())
                 // A truncated title can still be read in full.
                 .help(task.displayTitle)

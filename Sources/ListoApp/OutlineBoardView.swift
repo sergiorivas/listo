@@ -4,12 +4,14 @@ import ListoEngine
 struct OutlineBoardView: View {
     @ObservedObject var controller: DocumentController
     @ObservedObject private var settings = AppSettings.shared
+    @Namespace private var selectionNamespace
 
     var body: some View {
         if controller.document.sections.isEmpty {
             EmptyBoardView { controller.addSection() }
         } else {
             list
+                .selectionGlide(in: selectionNamespace)
         }
     }
 
@@ -214,6 +216,8 @@ private struct OutlineTaskNode: View {
                 PriorityBadge(priority: task.priority, dimmed: task.state == .done)
                 TaskMetaBadges(controller: controller, task: task)
 
+                Spacer(minLength: 0)
+
                 if canHaveNote, task.note == nil {
                     AddNoteButton(isVisible: isHovering || isSelected) {
                         controller.selectedTaskID = task.id
@@ -238,8 +242,11 @@ private struct OutlineTaskNode: View {
         .padding(.vertical, 2)
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
-        .rowHighlight(isSelected: isSelected, isFlashing: controller.flashTaskID == task.id)
-        .clipShape(RoundedRectangle(cornerRadius: 5))
+        .rowHighlight(
+            isSelected: isSelected,
+            isCursor: controller.selectedTaskID == task.id,
+            isFlashing: controller.flashTaskID == task.id
+        )
         .focusable()
         .focusEffectDisabled()
         .focused($isRowFocused)

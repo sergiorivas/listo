@@ -684,3 +684,15 @@ under XCTest.
   header actions slide in as well as fade; Kanban cards lift on hover; the
   filter bar slides down and its chips pop in/out; Kanban ⇄ Outline
   crossfades (Free Mode switches stay instant). Not run in the live GUI.
+- **Row badges follow the title, and the selection glides.** Same fix as
+  the header for `0/2`, priority and metadata badges: the title `Text`
+  hugs its text and the row puts a `Spacer` before the add-note icon. Side
+  effect: double-clicking the empty space right of a title no longer
+  starts editing (the title text, or Return, still does). The cursor's
+  highlight (`RowHighlight`, `isCursor`) is one `matchedGeometryEffect`
+  shape per board (`selectionGlide(in:)`), so it springs from the old row
+  to the new one; driven per row, not by a board-wide animation, so a
+  rename (new id, selection follows) stays instant. Rows no longer
+  `clipShape` — the highlight is a rounded shape itself, since a clip would
+  hide it mid-flight. Kanban columns still clip, so a glide across columns
+  cuts out at the column edge. Not run in the live GUI.
