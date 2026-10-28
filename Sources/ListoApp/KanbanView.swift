@@ -230,7 +230,7 @@ private struct KanbanColumn: View {
                 .rotationEffect(.degrees(isCollapsed ? -90 : 0))
                 .foregroundStyle(.secondary)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable)
         .help(isCollapsed ? L("column.expand", "Expandir columna") : L("column.collapse", "Colapsar columna"))
         .accessibilityLabel(isCollapsed ? L("column.expand", "Expandir columna") : L("column.collapse", "Colapsar columna"))
     }
@@ -245,6 +245,7 @@ private struct KanbanColumn: View {
                         .multilineTextAlignment(.center)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 16)
+                        .transition(.opacity)
                 }
                 ForEach(controller.filter.visible(section.displayTasks), id: \.id) { task in
                     TaskChip(controller: controller, task: task)
@@ -347,6 +348,7 @@ private struct TaskChip: View {
     @ObservedObject var controller: DocumentController
     let task: ListoTask
     @State private var noteEdit: NoteEditTarget?
+    @State private var isHovering = false
 
     var body: some View {
         TaskRow(controller: controller, task: task, depth: 0, allowMove: true) { target in
@@ -357,8 +359,11 @@ private struct TaskChip: View {
         .clipShape(RoundedRectangle(cornerRadius: 6))
         // Hairline + soft shadow so a card still separates from its column
         // in dark mode, where white-on-gray alone barely does.
-        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.primary.opacity(0.1), lineWidth: 0.5))
-        .shadow(color: .black.opacity(0.12), radius: 1.5, y: 1)
+        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.primary.opacity(isHovering ? 0.18 : 0.1), lineWidth: 0.5))
+        // Hovering lifts the card a little (deeper shadow, brighter edge).
+        .shadow(color: .black.opacity(isHovering ? 0.22 : 0.12), radius: isHovering ? 5 : 1.5, y: isHovering ? 3 : 1)
+        .onHover { isHovering = $0 }
+        .animation(Motion.quick, value: isHovering)
         .popover(item: $noteEdit) { target in
             NoteEditorPopover(target: target) { newText in
                 controller.setNote(taskID: target.id, note: newText.isEmpty ? nil : newText)

@@ -671,3 +671,16 @@ under XCTest.
 - A cancelled drag leaves `draggingTaskID` set (only a drop clears it), so
   no "dim the dragged card" effect was built on it. None of this was run in
   the live GUI.
+- **Header count badge sits after the title.** `SectionTitleField` used to
+  stretch across the header, so the badge after it landed at an arbitrary
+  spot mid-header (next to the hover buttons' reserved, invisible space).
+  The field now hugs its text (sized by a hidden `Text` copy of the title),
+  so the badge reads as part of the title, and the `+`/trash sit at the
+  trailing edge.
+- **More motion** (all via `Motion`, all off under Reduce Motion): count
+  badges and subtask progress `pulse(on:)` when their number changes
+  (progress pops harder when the last subtask is checked, and rolls its
+  digits); icon buttons/checkboxes use `.pressable` (press-down scale);
+  header actions slide in as well as fade; Kanban cards lift on hover; the
+  filter bar slides down and its chips pop in/out; Kanban ⇄ Outline
+  crossfades (Free Mode switches stay instant). Not run in the live GUI.

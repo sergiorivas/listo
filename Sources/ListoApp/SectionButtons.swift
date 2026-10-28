@@ -21,7 +21,7 @@ struct HeaderIconButton: View {
                 )
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable)
         .onHover { isHovering = $0 }
         .animation(Motion.quick, value: isHovering)
         .help(label)
@@ -70,6 +70,7 @@ struct SectionDeleteButton: View {
 /// hovered so a board of many columns isn't a wall of `+`/trash icons; the
 /// buttons keep their accessibility labels while hidden, and the delete one
 /// sits apart from `+` so the destructive action isn't an accidental click.
+/// They fade and slide a few points in rather than just popping on.
 struct SectionHeaderActions: View {
     let isVisible: Bool
     let onAdd: () -> Void
@@ -82,14 +83,20 @@ struct SectionHeaderActions: View {
                 .padding(.leading, 6)
         }
         .opacity(isVisible ? 1 : 0)
+        .offset(x: isVisible || Motion.reduceMotion ? 0 : 6)
         .allowsHitTesting(isVisible)
-        .animation(Motion.quick, value: isVisible)
+        .animation(Motion.snappy, value: isVisible)
     }
 }
 
 /// The editable title of a column / heading, shared by Kanban columns,
 /// subgroups and Outline sections. Takes focus when the section was just
 /// created (`DocumentController.focusSectionID`) so it can be named at once.
+///
+/// The field hugs its text (sized by an invisible copy of the title) rather
+/// than stretching across the header: a stretched field pushed the count
+/// badge after it out to an arbitrary spot mid-header, next to the hidden
+/// hover buttons' reserved space. Now the badge sits right after the title.
 struct SectionTitleField: View {
     @ObservedObject var controller: DocumentController
     let section: ListoSection
@@ -99,6 +106,16 @@ struct SectionTitleField: View {
     @FocusState private var isFocused: Bool
 
     var body: some View {
+        Text(titleText.isEmpty ? " " : titleText)
+            .font(font)
+            .lineLimit(1)
+            // Room for the caret at the end of the text while typing.
+            .padding(.trailing, 4)
+            .hidden()
+            .overlay(alignment: .leading) { field }
+    }
+
+    private var field: some View {
         TextField("", text: $titleText, onCommit: {
             let trimmed = titleText.trimmingCharacters(in: .whitespaces)
             if !trimmed.isEmpty, trimmed != section.title {
@@ -167,7 +184,7 @@ struct AddSectionButton: View {
                 .padding(.vertical, 8)
                 .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable)
         .onHover { isHovering = $0 }
         .animation(Motion.quick, value: isHovering)
     }

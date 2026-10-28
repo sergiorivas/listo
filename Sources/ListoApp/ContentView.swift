@@ -22,13 +22,18 @@ struct ContentView: View {
                 switch controller.viewStyle {
                 case .kanban:
                     KanbanView(controller: controller)
+                        .transition(.opacity)
                 case .outline:
                     OutlineBoardView(controller: controller)
+                        .transition(.opacity)
                 }
             case .freeEdit:
                 FreeEditView(text: $fileDocument.text)
             }
         }
+        // Kanban ⇄ Outline crossfades. Only the view style: switching to or
+        // from Free Mode reloads the tree and stays instant (see Motion).
+        .animation(Motion.snappy, value: controller.viewStyle)
         .frame(minWidth: 480, idealWidth: idealWindowWidth, minHeight: 360, idealHeight: 640)
         // Exposes this window's controller to the app-level Task menu
         // (ListoApp.swift's `TaskCommands`), which is what actually owns

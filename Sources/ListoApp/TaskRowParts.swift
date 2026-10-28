@@ -13,7 +13,7 @@ struct TaskCheckboxButton: View {
         Button(action: action) {
             TaskCheckboxIcon(isDone: isDone)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable)
         .accessibilityLabel(isDone ? L("task.reopen", "Reabrir tarea") : L("task.complete", "Marcar como hecha"))
     }
 }
@@ -30,8 +30,9 @@ struct AddNoteButton: View {
             Image(systemName: "note.text.badge.plus")
                 .foregroundStyle(.secondary)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.pressable)
         .opacity(isVisible ? 1 : 0)
+        .scaleEffect(isVisible || Motion.reduceMotion ? 1 : 0.7)
         .allowsHitTesting(isVisible)
         .animation(Motion.quick, value: isVisible)
         .help(L("note.add.help", "Agregar nota"))
@@ -268,7 +269,11 @@ struct SubtaskProgressBadge: View {
                 .font(settings.font(.caption, weight: .medium))
                 .monospacedDigit()
                 .foregroundStyle(done == total ? Color.green : .secondary)
+                .contentTransition(.numericText(value: Double(done)))
+                .animation(Motion.snappy, value: done)
                 .fixedSize()
+                // A bigger pop when the last subtask gets checked off.
+                .pulse(on: done, scale: done == total ? 1.35 : 1.15)
                 .help(String(format: L("subtask.progress", "%d de %d subtareas hechas"), done, total))
                 .accessibilityLabel(String(format: L("subtask.progress", "%d de %d subtareas hechas"), done, total))
         }

@@ -18,6 +18,8 @@ struct SectionCountBadge: View {
             .padding(.horizontal, 7)
             .padding(.vertical, 1)
             .background(Capsule().fill(Color.secondary.opacity(0.18)))
+            .fixedSize()
+            .pulse(on: count)
             .help(String(format: L("section.taskCount", "%d tareas"), count))
             .accessibilityLabel(String(format: L("section.taskCount", "%d tareas"), count))
     }

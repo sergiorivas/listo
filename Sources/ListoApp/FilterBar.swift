@@ -3,7 +3,8 @@ import ListoEngine
 
 /// Active filters as removable chips under the toolbar, plus how many tasks
 /// they leave — so a hidden task is never a mystery. Only drawn while a
-/// filter is active.
+/// filter is active; slides down from the toolbar when the first filter is
+/// set, and chips pop in/out as filters are added or removed.
 struct FilterBar: View {
     @ObservedObject var controller: DocumentController
     @ObservedObject private var settings = AppSettings.shared
@@ -51,41 +52,53 @@ struct FilterBar: View {
     }
 
     var body: some View {
-        if controller.filter.isActive {
-            let shown = controller.filter.displayOrder(in: controller.document).count
-            let total = controller.document.allTasksRecursive.count
-            HStack(spacing: 6) {
-                ForEach(chips) { chip in
-                    HStack(spacing: 3) {
-                        Text(chip.title)
-                        Button(action: chip.remove) {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 8, weight: .bold))
-                        }
-                        .buttonStyle(.plain)
-                        .help(L("filter.chip.remove", "Quitar filtro"))
-                        .accessibilityLabel("\(L("filter.chip.remove", "Quitar filtro")): \(chip.title)")
-                    }
-                    .font(settings.font(.caption))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(Capsule().fill(Color.accentColor.opacity(0.18)))
-                }
-                Button(L("filter.clear", "Quitar filtros")) { controller.filter = TaskFilter() }
-                    .buttonStyle(.plain)
-                    .font(settings.font(.caption))
-                    .foregroundStyle(Color.accentColor)
-                Spacer(minLength: 8)
-                Text(String(format: L("filter.shown", "%d de %d tareas"), shown, total))
-                    .font(settings.font(.caption))
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
+        VStack(spacing: 0) {
+            if controller.filter.isActive {
+                bar.transition(.move(edge: .top).combined(with: .opacity))
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 6)
-            .background(.bar)
-            .overlay(alignment: .bottom) { Divider() }
         }
+        .clipped()
+        .animation(Motion.snappy, value: controller.filter.isActive)
+        .animation(Motion.snappy, value: chips.map(\.id))
+    }
+
+    @ViewBuilder
+    private var bar: some View {
+        let shown = controller.filter.displayOrder(in: controller.document).count
+        let total = controller.document.allTasksRecursive.count
+        HStack(spacing: 6) {
+            ForEach(chips) { chip in
+                HStack(spacing: 3) {
+                    Text(chip.title)
+                    Button(action: chip.remove) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 8, weight: .bold))
+                    }
+                    .buttonStyle(.plain)
+                    .help(L("filter.chip.remove", "Quitar filtro"))
+                    .accessibilityLabel("\(L("filter.chip.remove", "Quitar filtro")): \(chip.title)")
+                }
+                .font(settings.font(.caption))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Capsule().fill(Color.accentColor.opacity(0.18)))
+                .transition(.scale(scale: 0.6).combined(with: .opacity))
+            }
+            Button(L("filter.clear", "Quitar filtros")) { controller.filter = TaskFilter() }
+                .buttonStyle(.plain)
+                .font(settings.font(.caption))
+                .foregroundStyle(Color.accentColor)
+            Spacer(minLength: 8)
+            Text(String(format: L("filter.shown", "%d de %d tareas"), shown, total))
+                .font(settings.font(.caption))
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .contentTransition(.numericText(value: Double(shown)))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+        .background(.bar)
+        .overlay(alignment: .bottom) { Divider() }
     }
 }
 

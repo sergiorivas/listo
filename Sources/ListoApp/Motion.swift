@@ -98,7 +98,43 @@ struct DropTargetHighlight: ViewModifier {
     }
 }
 
+/// A quick "pop" — scale up, spring back — whenever `value` changes. Used
+/// on counts (section badge, subtask progress) so a change elsewhere in the
+/// column catches the eye. Stays at 1 under Reduce Motion.
+struct PulseOnChange<Value: Equatable>: ViewModifier {
+    let value: Value
+    var scale: CGFloat = 1.2
+
+    func body(content: Content) -> some View {
+        content.keyframeAnimator(initialValue: CGFloat(1), trigger: value) { view, s in
+            view.scaleEffect(s)
+        } keyframes: { _ in
+            KeyframeTrack {
+                CubicKeyframe(Motion.reduceMotion ? 1 : scale, duration: 0.1)
+                SpringKeyframe(1, duration: 0.35, spring: .bouncy)
+            }
+        }
+    }
+}
+
+/// `.plain`, plus a small press-down scale so icon buttons feel clicked.
+struct PressableButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed && !Motion.reduceMotion ? 0.86 : 1)
+            .animation(Motion.quick, value: configuration.isPressed)
+    }
+}
+
+extension ButtonStyle where Self == PressableButtonStyle {
+    static var pressable: PressableButtonStyle { PressableButtonStyle() }
+}
+
 extension View {
+    func pulse<Value: Equatable>(on value: Value, scale: CGFloat = 1.2) -> some View {
+        modifier(PulseOnChange(value: value, scale: scale))
+    }
+
     func rowHighlight(isSelected: Bool, isFlashing: Bool) -> some View {
         modifier(RowHighlight(isSelected: isSelected, isFlashing: isFlashing))
     }
