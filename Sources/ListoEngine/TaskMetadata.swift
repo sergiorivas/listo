@@ -53,6 +53,50 @@ public struct TaskDueDate: Hashable, Comparable, Sendable {
     public static func < (a: TaskDueDate, b: TaskDueDate) -> Bool {
         (a.year, a.month, a.day) < (b.year, b.month, b.day)
     }
+
+    /// A date typed in words — `@today`, `@tomorrow`, `@fri`, `@3d`, `@2w`,
+    /// or their Spanish forms (`@hoy`, `@mañana`, `@vie`, `@2s`) — resolved
+    /// against `today`. A weekday is the next one strictly after today, so
+    /// `@fri` typed on a Friday means a week later. Case and accents are
+    /// ignored. Anything else (including an absolute `@2026-11-03`) is `nil`.
+    public init?(relativeToken token: String, today: TaskDueDate, calendar: Calendar = .current) {
+        guard token.hasPrefix("@") else { return nil }
+        let word = token.dropFirst().folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+        let offset: Int
+        if let days = Self.namedOffsets[word] {
+            offset = days
+        } else if let weekday = Self.weekdays[word] {
+            let current = calendar.component(.weekday, from: today.date(calendar: calendar))
+            let ahead = (weekday - current + 7) % 7
+            offset = ahead == 0 ? 7 : ahead
+        } else if let unit = word.last, let multiplier = Self.unitDays[unit],
+                  let count = Int(word.dropLast()), (1...999).contains(count) {
+            offset = count * multiplier
+        } else {
+            return nil
+        }
+        self = today.adding(days: offset, calendar: calendar)
+    }
+
+    private static let namedOffsets: [String: Int] = [
+        // No `@tom`/`@tod` short forms: those read as people's names.
+        "today": 0, "hoy": 0,
+        "tomorrow": 1, "tmr": 1, "manana": 1,
+    ]
+
+    /// `Calendar.component(.weekday)` numbering: Sunday = 1.
+    private static let weekdays: [String: Int] = [
+        "sun": 1, "sunday": 1, "dom": 1, "domingo": 1,
+        "mon": 2, "monday": 2, "lun": 2, "lunes": 2,
+        "tue": 3, "tues": 3, "tuesday": 3, "mar": 3, "martes": 3,
+        "wed": 4, "wednesday": 4, "mie": 4, "miercoles": 4,
+        "thu": 5, "thur": 5, "thurs": 5, "thursday": 5, "jue": 5, "jueves": 5,
+        "fri": 6, "friday": 6, "vie": 6, "viernes": 6,
+        "sat": 7, "saturday": 7, "sab": 7, "sabado": 7,
+    ]
+
+    /// `@3d` days, `@2w` (or Spanish `@2s`, semanas) weeks.
+    private static let unitDays: [Character: Int] = ["d": 1, "w": 7, "s": 7]
 }
 
 /// Where a due date stands relative to a reference day.
@@ -121,6 +165,30 @@ public struct TaskMetadata: Equatable, Sendable {
         }
         if let due { words.append(due.token) }
         return words.joined(separator: " ")
+    }
+
+    /// `text` with every date typed in words (`@tomorrow`, `@fri`, `@3d`,
+    /// see `TaskDueDate(relativeToken:)`) rewritten as the absolute
+    /// `@YYYY-MM-DD` it means today, so the file holds a date that stays
+    /// put. Spacing and every other word are left exactly as typed.
+    public static func resolvingRelativeDates(in text: String, today: TaskDueDate, calendar: Calendar = .current) -> String {
+        guard text.contains("@") else { return text }
+        var result = ""
+        var word = ""
+        func flush() {
+            result += TaskDueDate(relativeToken: word, today: today, calendar: calendar)?.token ?? word
+            word = ""
+        }
+        for character in text {
+            if character.isWhitespace {
+                flush()
+                result.append(character)
+            } else {
+                word.append(character)
+            }
+        }
+        flush()
+        return result
     }
 }
 

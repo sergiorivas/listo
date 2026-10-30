@@ -17,6 +17,9 @@ public struct LogEvent: Codable, Equatable {
         /// Several top-level tasks were merged into one task whose subtasks
         /// they became. `text` is the new group's name.
         case grouped
+        /// A finished top-level task was moved out of the list into its
+        /// archive file (`ListoEditor.archiveCompletedTasks`).
+        case archived
         case priorityChanged = "priority_changed"
         case noteUpdated = "note_updated"
         case deleted

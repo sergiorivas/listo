@@ -77,6 +77,9 @@ final class DocumentController: ObservableObject {
     /// A section whose title field should take focus (just created by
     /// `addSection`); the field clears it once it has claimed focus.
     @Published var focusSectionID: UUID?
+    /// The task whose due date is being picked in the calendar sheet (the
+    /// Due date menu's "Choose date…").
+    @Published var duePickerTaskID: DuePickerTarget?
     /// The search text and filter menu choices: they only decide which rows
     /// the views show (and ↑/↓ walks), never what is in the file.
     @Published var filter = TaskFilter()
@@ -107,6 +110,10 @@ final class DocumentController: ObservableObject {
     var diskBaseline: String
     var fileURL: URL?
 
+    /// Every open window's controller, so quick capture can hand a task to
+    /// the window that already has its list open.
+    static let live = NSHashTable<DocumentController>.weakObjects()
+
     init(fileDocument: ListoFileDocument, fileURL: URL?) {
         self.fileDocument = fileDocument
         self.fileURL = fileURL
@@ -116,6 +123,7 @@ final class DocumentController: ObservableObject {
         self.lastKnownText = fileDocument.text
         self.diskBaseline = fileDocument.text
         refreshLog()
+        Self.live.add(self)
         fileDocument.onWillSave = { [weak self] text in
             self?.diskBaseline = text
             self?.handleSave(currentText: text)
@@ -400,6 +408,19 @@ final class DocumentController: ObservableObject {
     /// the engine refuses (`DropRule` already filters these) is a silent
     /// no-op.
     func drop(taskID: UUID, onto targetID: UUID, placement: DropPlacement) {
+        let ids = targets(for: taskID)
+        if ids.count > 1 {
+            guard !ids.contains(targetID) else { return }
+            // In display order: each lands before the target, after the one
+            // dropped just before it, or as the target's new last subtask —
+            // so the block keeps its order either way.
+            var anchor = targetID
+            performBatch(ids, follow: true, silencing: { $0 == .invalidMove || $0 == .taskHasContent }) { editor, id in
+                try editor.moveTask(taskID: id, relativeTo: anchor, placement: placement)
+                if placement == .after, let moved = editor.lastActionTaskID { anchor = moved }
+            }
+            return
+        }
         perform(animation: Motion.snappy, flash: true, followSelectionFrom: taskID, silencing: { $0 == .invalidMove || $0 == .taskHasContent }) {
             try $0.moveTask(taskID: taskID, relativeTo: targetID, placement: placement)
         }
@@ -481,6 +502,25 @@ final class DocumentController: ObservableObject {
         selectedTaskID = target
         SoundPlayer.playDeleteIfNeeded()
         return true
+    }
+
+    /// Whether "Archive Completed Tasks" has anything to do. Needs a saved
+    /// file: the archive goes next to it, and an untitled list has no place
+    /// on disk yet.
+    var canArchive: Bool {
+        mode == .app && fileURL != nil && !editor.archivableTasks.isEmpty
+    }
+
+    var archiveURL: URL { editor.archiveURL }
+
+    /// Moves every finished top-level task to the list's archive file
+    /// (`ListoEditor.archiveCompletedTasks`); ⌘Z brings them back.
+    func archiveCompleted() {
+        guard canArchive else { return }
+        guard perform(animation: Motion.snappy, silencing: { $0 == .nothingToArchive }, { try $0.archiveCompletedTasks()[0] }) else { return }
+        let live = Set(document.allTasksRecursive.map(\.id))
+        if let id = selectedTaskID, !live.contains(id) { selectedTaskID = nil }
+        if let id = editingTaskID, !live.contains(id) { editingTaskID = nil }
     }
 
     func deleteSection(sectionID: UUID) {

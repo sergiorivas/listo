@@ -60,4 +60,19 @@ final class DropRuleTests: XCTestCase {
         let d = doc("# T\n\n- [ ] P\n  - [ ] s1\n- [ ] Q\n")
         XCTAssertEqual(place(d, "s1", "Q", 0.5), .asSubtask)
     }
+
+    func testMultiSelectionNestsOnlyIfEveryTaskCan() {
+        let d = doc("# T\n\n- [ ] A\n- [ ] B\n- [ ] C\n  n\n- [ ] D\n")
+        let pair = [task(d, "A"), task(d, "B")]
+        XCTAssertEqual(DropRule.placement(dragging: pair, primary: pair[0], target: task(d, "D"), in: d, fraction: 0.5, targetShowsSubtasks: false), .asSubtask)
+        let withNote = [task(d, "A"), task(d, "C")]
+        XCTAssertNil(DropRule.placement(dragging: withNote, primary: withNote[0], target: task(d, "D"), in: d, fraction: 0.5, targetShowsSubtasks: false),
+                     "C has a note, so it can't become a subtask")
+    }
+
+    func testMultiSelectionCantDropOntoItself() {
+        let d = doc("# T\n\n- [ ] A\n- [ ] B\n- [ ] C\n")
+        let pair = [task(d, "A"), task(d, "B")]
+        XCTAssertNil(DropRule.placement(dragging: pair, primary: pair[0], target: task(d, "B"), in: d, fraction: 0.1, targetShowsSubtasks: false))
+    }
 }

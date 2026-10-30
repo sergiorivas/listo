@@ -59,15 +59,28 @@ private struct TaskDropDelegate: DropDelegate {
     @Binding var placement: DropPlacement?
 
     private func resolve(at location: CGPoint) -> DropPlacement? {
+        let all = controller.document.allTasksRecursive
         guard let id = controller.draggingTaskID,
-              let dragged = controller.document.allTasksRecursive.first(where: { $0.id == id }),
+              let dragged = all.first(where: { $0.id == id }),
               size.height > 0
         else { return nil }
+        let fraction = min(max(location.y / size.height, 0), 1)
+        let ids = controller.targets(for: id)
+        if ids.count > 1 {
+            return DropRule.placement(
+                dragging: ids.compactMap { id in all.first { $0.id == id } },
+                primary: dragged,
+                target: target,
+                in: controller.document,
+                fraction: fraction,
+                targetShowsSubtasks: showsSubtasks
+            )
+        }
         return DropRule.placement(
             dragged: dragged,
             target: target,
             in: controller.document,
-            fraction: min(max(location.y / size.height, 0), 1),
+            fraction: fraction,
             targetShowsSubtasks: showsSubtasks
         )
     }
@@ -100,7 +113,35 @@ extension View {
             .onDrag {
                 controller.draggingTaskID = task.id
                 return NSItemProvider(object: task.id.uuidString as NSString)
+            } preview: {
+                TaskDragPreview(title: task.displayTitle, count: controller.targets(for: task.id).count)
             }
             .modifier(TaskDropTarget(controller: controller, task: task, showsSubtasks: showsSubtasks))
+    }
+}
+
+/// What follows the pointer while dragging: the row's title, plus a count
+/// badge when the whole multi-selection is coming along.
+private struct TaskDragPreview: View {
+    let title: String
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .lineLimit(1)
+            if count > 1 {
+                Text("\(count)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(Color.accentColor))
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(maxWidth: 280, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 6).fill(.regularMaterial))
     }
 }

@@ -32,8 +32,9 @@ Sources/ListoEngine/     UI-independent engine (Swift Package), spec §02/§05/�
   Editor+Tasks.swift      add/toggle/rename/priority/note/insert
   Editor+Structure.swift  indent, outdent, reorder, split, group, move
                           (incl. drop-onto-task), delete
+  Editor+Archive.swift    Archive finished tasks into `Name.archive.md`
   TaskMetadata.swift      `@2026-11-03` due dates and `#tags` read from a
-                          task's title
+                          task's title; `@tomorrow`/`@fri` resolved to dates
   TaskFilter.swift        Search/filter criteria + the filtered display order
   StableID.swift          Deterministic, content-derived UUID — a task's/
                           section's identity survives a reparse as long as
@@ -53,7 +54,9 @@ Sources/ListoApp/        SwiftUI app (macOS executable), ADR-001
                           log (+Selection, +DoneMove, +External extensions)
   TitleEditing.swift      Title-field flow shared by Kanban and Outline rows
   TaskDropTarget.swift    Drag a task onto another: reorder / nest (DropRule)
-  TaskMetaViews.swift     Due/tag badges, Due date menu, toolbar filter menu
+  TaskMetaViews.swift     Due/tag badges, Due date menu + date picker,
+                          toolbar filter menu
+  QuickCapture.swift      ⌃⌥N capture panel, menu-bar box, global hotkey
   ContentView.swift       Toolbar (App/Free Mode, Kanban/Outline, Save, history)
   KanbanView.swift        Board view (§04)
   OutlineBoardView.swift  Document view with real typographic hierarchy (§04)
@@ -65,9 +68,9 @@ Sources/ListoApp/        SwiftUI app (macOS executable), ADR-001
   LocalizationTable.swift es/en translations in code, not a String Catalog
   RecentFilesStore.swift  Remembers opened files; reopens the last one on launch
 
-Tests/ListoEngineTests/  137 tests covering the parser, editor, differ, metadata,
-                         filter, drop and log
-Tests/ListoAppTests/     42 tests covering DocumentController, DropRule and
+Tests/ListoEngineTests/  153 tests covering the parser, editor, differ, metadata,
+                         typed dates, archive, filter, drop and log
+Tests/ListoAppTests/     55 tests covering DocumentController, DropRule and
                          external-change handling
 Scripts/version.sh       Derives the version from git tags (no manual input)
 Scripts/build_app.sh     Builds an ad-hoc-signed Listo.app into dist/ — no
@@ -148,11 +151,33 @@ badge (red when overdue) and tag chips in place of the raw tokens, and the
 right-click menu has a Due date submenu. Filtering only hides rows; the file
 is untouched.
 
+## Typing dates
+
+In a task title, `@tomorrow`, `@fri`, `@3d` or `@2w` (or `@mañana`, `@vie`)
+becomes the real date (`@2026-10-31`) when you press Return. A weekday means
+the next one after today. Right-click ▸ Due date ▸ Choose date… opens a
+calendar.
+
+## Quick capture
+
+Press **⌃⌥N** anywhere to add a task without switching to Listo: it goes to
+the end of the first section (your inbox) of the last list you opened, or of
+the list chosen in Settings ▸ Quick capture. The same box can live in the
+menu bar (Settings ▸ Quick capture ▸ Show in the menu bar). The shortcut can
+be turned off there too.
+
+## Archive
+
+Task ▸ Archive Completed Tasks (**⌥⌘A**) moves every finished task out of the
+list into `Name.archive.md` next to it, grouped by date and section. ⌘Z puts
+them back. Task ▸ Open Archive opens it like any other list.
+
 ## Drag and drop
 
 Drag a task onto another: the top or bottom edge of the row reorders (a line
 shows where), the middle nests it as that task's last subtask. Dropping on a
-column or heading still moves it to the end of that section. Reordering
+column or heading still moves it to the end of that section. With several
+tasks selected (⇧↑/⇧↓), dragging one of them moves them all. Reordering
 between different priorities isn't offered, since the board sorts by
 priority.
 

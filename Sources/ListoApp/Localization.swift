@@ -238,6 +238,28 @@ final class AppSettings: ObservableObject {
             reloadToken &+= 1
         }
     }
+    /// ⌃⌥N anywhere opens the quick-capture box (`QuickCapturePanel`).
+    @Published var quickCaptureHotKeyEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(quickCaptureHotKeyEnabled, forKey: Keys.quickCaptureHotKeyEnabled)
+            reloadToken &+= 1
+        }
+    }
+    /// A capture box in the menu bar. Off by default: a new menu-bar icon
+    /// shouldn't appear unasked.
+    @Published var quickCaptureMenuBarEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(quickCaptureMenuBarEnabled, forKey: Keys.quickCaptureMenuBarEnabled)
+            reloadToken &+= 1
+        }
+    }
+    /// The list quick capture adds to; `nil` means the most recently opened.
+    @Published var quickCapturePath: String? {
+        didSet {
+            UserDefaults.standard.set(quickCapturePath, forKey: Keys.quickCapturePath)
+            reloadToken &+= 1
+        }
+    }
     /// Bumped on every change above; views apply `.id(settings.reloadToken)`
     /// to force a full re-render (including their `L(...)` calls) without
     /// having to thread `@ObservedObject` reads through every leaf view.
@@ -257,6 +279,9 @@ final class AppSettings: ObservableObject {
         static let firstSectionBackgroundColor = "listo.settings.firstSectionBackgroundColor"
         static let lastSectionBackgroundEnabled = "listo.settings.lastSectionBackgroundEnabled"
         static let lastSectionBackgroundColor = "listo.settings.lastSectionBackgroundColor"
+        static let quickCaptureHotKeyEnabled = "listo.settings.quickCaptureHotKeyEnabled"
+        static let quickCaptureMenuBarEnabled = "listo.settings.quickCaptureMenuBarEnabled"
+        static let quickCapturePath = "listo.settings.quickCapturePath"
     }
 
     private init() {
@@ -280,6 +305,9 @@ final class AppSettings: ObservableObject {
         lastSectionBackgroundEnabled = defaults.object(forKey: Keys.lastSectionBackgroundEnabled) as? Bool ?? true
         lastSectionBackgroundColor = defaults.string(forKey: Keys.lastSectionBackgroundColor)
             .flatMap(Color.init(hex:)) ?? Self.defaultLastSectionBackground
+        quickCaptureHotKeyEnabled = defaults.object(forKey: Keys.quickCaptureHotKeyEnabled) as? Bool ?? true
+        quickCaptureMenuBarEnabled = defaults.object(forKey: Keys.quickCaptureMenuBarEnabled) as? Bool ?? false
+        quickCapturePath = defaults.string(forKey: Keys.quickCapturePath)
     }
 
     func resetSectionBackgrounds() {

@@ -14,6 +14,8 @@ public enum ListoEditorError: Error, Equatable {
     case cannotGroup
     /// A task to group has a note or subtasks, which a subtask can't hold.
     case groupedTaskHasContent
+    /// Archiving found no finished top-level task to move.
+    case nothingToArchive
     /// A drag-and-drop that makes no sense: onto itself or its own subtask,
     /// or a top-level task dropped between subtasks.
     case invalidMove
@@ -61,6 +63,9 @@ public final class ListoEditor {
     /// `taskNotFound`. `nil` after an action that doesn't change identity
     /// (`toggle`, `setNote`, ...) or that removes the task entirely.
     public internal(set) var lastActionTaskID: UUID?
+    /// The day typed dates (`@tomorrow`, `@fri`) are resolved against when a
+    /// title is written — injectable so tests don't depend on the clock.
+    public var today: () -> TaskDueDate = { TaskDueDate(date: Date()) }
     var lines: [String]
 
     /// One Modo App action, as whole-file snapshots: what the text was
@@ -72,7 +77,19 @@ public final class ListoEditor {
         let before: String
         let after: String
         let event: LogEvent
+        /// Another file the action also wrote (the archive), restored along
+        /// with the list on undo/redo.
+        var sidecar: SidecarChange?
     }
+    /// A second file's contents before and after an action; `nil` before
+    /// means the action created it.
+    struct SidecarChange {
+        let url: URL
+        let before: String?
+        let after: String
+    }
+    /// Set by an action that writes a second file, consumed by `record(_:)`.
+    var pendingSidecar: SidecarChange?
     private var undoStack: [HistoryEntry] = []
     private var redoStack: [HistoryEntry] = []
     /// The text as of the last commit/undo/redo/external load — the "before"
@@ -133,6 +150,7 @@ public final class ListoEditor {
     public func undo() throws -> LogEvent? {
         guard let entry = undoStack.popLast() else { return nil }
         try restore(text: entry.before)
+        if let sidecar = entry.sidecar { try restoreSidecar(sidecar.url, to: sidecar.before) }
         redoStack.append(entry)
         return try logWriter.append(historyEvent(.undone, for: entry.event))
     }
@@ -144,6 +162,7 @@ public final class ListoEditor {
     public func redo() throws -> LogEvent? {
         guard let entry = redoStack.popLast() else { return nil }
         try restore(text: entry.after)
+        if let sidecar = entry.sidecar { try restoreSidecar(sidecar.url, to: sidecar.after) }
         undoStack.append(entry)
         return try logWriter.append(historyEvent(.redone, for: entry.event))
     }
@@ -167,6 +186,16 @@ public final class ListoEditor {
         try write(text)
     }
 
+    /// Writes a sidecar file back to `text`, or removes it when the action
+    /// being undone had created it.
+    private func restoreSidecar(_ url: URL, to text: String?) throws {
+        if let text {
+            try text.write(to: url, atomically: true, encoding: .utf8)
+        } else if FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+        }
+    }
+
     /// Appends the action's event to the log and files the action's
     /// snapshots under it in the undo history. Every public action ends with
     /// this instead of a bare `logWriter.append`.
@@ -175,14 +204,16 @@ public final class ListoEditor {
             if batchHasEntry, let first = undoStack.popLast() {
                 // Same batch: one entry spanning the first action's "before"
                 // to this one's "after", named after the first action.
-                undoStack.append(HistoryEntry(before: first.before, after: change.after, event: first.event))
+                undoStack.append(HistoryEntry(before: first.before, after: change.after, event: first.event,
+                                              sidecar: first.sidecar ?? pendingSidecar))
             } else {
-                undoStack.append(HistoryEntry(before: change.before, after: change.after, event: event))
+                undoStack.append(HistoryEntry(before: change.before, after: change.after, event: event, sidecar: pendingSidecar))
                 if undoStack.count > Self.maxUndoDepth { undoStack.removeFirst() }
                 batchHasEntry = isBatching
             }
             redoStack.removeAll()
             pendingChange = nil
+            pendingSidecar = nil
         }
         return try logWriter.append(event)
     }
@@ -270,6 +301,12 @@ public final class ListoEditor {
             end = max(end, fullRange(of: sub).upperBound)
         }
         return own.lowerBound..<end
+    }
+
+    /// A title as typed, with any date written in words fixed to the day
+    /// it means now (see `TaskMetadata.resolvingRelativeDates`).
+    func resolvingDates(_ text: String) -> String {
+        TaskMetadata.resolvingRelativeDates(in: text, today: today())
     }
 
     func splitIndent(_ line: String) -> (indent: String, rest: Substring) {

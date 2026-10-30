@@ -726,3 +726,77 @@ subsections) accordion-style; the count badge stays visible.
   ancestors first (`revealOutlineSection`). Other moves into a folded
   section (Move to…, drag) don't — the task just goes in out of sight.
   Not run in the live GUI.
+
+## Typed dates (`@tomorrow`, `@fri`, `@3d`)
+
+A date typed in words is rewritten to the absolute `@YYYY-MM-DD` when the
+title is written in App Mode (`addTask`, `renameTask`, `insertTaskAfter`, via
+`ListoEditor.resolvingDates`), so the file holds a date that doesn't drift.
+Words: `today`/`hoy`, `tomorrow`/`tmr`/`mañana`, weekdays in English and
+Spanish (short and long), `@Nd`, `@Nw`/`@Ns`. A weekday is the next one
+*strictly after* today (`@fri` on a Friday is a week out — `@today` exists
+for today). No `@tom`/`@tod`: they read as people's names. Free Mode text is
+never rewritten. `ListoEditor.today` is injectable for tests. The Due date
+menu also got "Choose date…", a graphical `DatePicker` sheet
+(`DueDatePickerSheet`, driven by `DocumentController.duePickerTaskID`
+because a context menu can't host a popover).
+
+## Dragging a multi-selection
+
+Dropping onto a *task* now moves the whole ⇧↑/⇧↓ selection when the dragged
+row is part of it (section/heading drops already did, via `move` →
+`targets(for:)`). `DropRule.placement(dragging:primary:…)` takes the
+placement from the row under the pointer, then offers it only if every
+selected task could land there too (nest: none has a note/subtasks) and the
+target isn't one of them; only the primary is held to the "visible effect"
+rule. The controller moves them in display order — `.before` each before the
+target, `.after` each after the previous one, `.asSubtask` each as the new
+last subtask — so the block keeps its order, as one undo step. The drag
+preview shows a count badge. Not run in the live GUI: whether starting a drag
+on a selected row keeps the multi-selection (rather than a click collapsing
+it) is unverified.
+
+## Archiving finished tasks (⌥⌘A)
+
+Task ▸ Archive Completed Tasks moves every finished *top-level* task (note
+and subtasks included, whatever their state) out of the list into
+`Name.archive.md` next to it, appended under `# Archived YYYY-MM-DD` with a
+`## Section / Path` heading per source section. A separate file rather than
+an `# Archive` section, which would show up as a Kanban column; and an
+ordinary Listo file, so Task ▸ Open Archive just opens it.
+
+- **Undo restores both files.** History entries gained an optional sidecar
+  (`SidecarChange`: url, before, after); undo writes the archive back (or
+  removes it if the action created it), redo re-writes it. Without that,
+  undoing would duplicate the tasks into both files.
+- One `archived` log event per task; the undo entry is named after the first.
+- Manual only. "Done for N days" auto-archiving was not built: the file has
+  no completion timestamps (the log does, but the list shouldn't depend on
+  the log).
+- Needs a saved file (`canArchive`): an untitled list's scratch URL is in a
+  temp directory.
+
+## Quick capture (⌃⌥N, optional menu-bar box)
+
+`QuickCapture.add` puts a task at the end of the target list's **first
+section** — the inbox — creating an "Inbox" section if there is none. Target:
+the list chosen in Settings ▸ Quick capture, else the most recently opened.
+
+- **Open list → its window's controller** (`DocumentController.live`, a weak
+  registry), so the board, undo history and save stay consistent; it saves
+  explicitly through `NSDocumentController.document(for:)` because the
+  capture panel, not the document window, is key. In Free Mode the line is
+  added to the free text (via a scratch editor, so nothing is logged twice)
+  and interpreted on the next save. **Closed list →** a plain `ListoEditor`
+  on the file; an open window elsewhere picks it up through the
+  external-change check.
+- **Global shortcut**: Carbon `RegisterEventHotKey` (no Accessibility
+  permission), ⌃⌥N, on by default, toggle in Settings. Not ⌃⌥Space: that is
+  macOS's input-source switch. Opens a non-activating floating `NSPanel`, so
+  typing into it doesn't bring Listo's windows forward; it closes on Return,
+  Esc, or losing focus.
+- **Menu bar**: `MenuBarExtra(isInserted:)` bound to a setting, off by
+  default (asked for as a setting). It stays open after adding, for the next
+  task.
+- Typed dates work in captured text (it goes through `addTask`). Not run in
+  the live GUI beyond launching with the menu-bar setting on.

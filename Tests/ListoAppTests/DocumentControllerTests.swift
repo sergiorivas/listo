@@ -309,4 +309,71 @@ final class DocumentControllerTests: XCTestCase {
         XCTAssertNil(c.errorMessage)
         XCTAssertEqual(c.document.sections[0].tasks.map(\.text), ["A", "B"])
     }
+
+    private func selectRange(_ c: DocumentController, from start: String, extending steps: Int) {
+        c.selectedTaskID = task(c, start).id
+        for _ in 0..<steps { c.extendSelection(direction: 1) }
+    }
+
+    func testDroppingMultiSelectionAfterTargetKeepsItsOrder() {
+        let c = makeController(list)
+        selectRange(c, from: "A", extending: 1)
+        c.drop(taskID: task(c, "A").id, onto: task(c, "D").id, placement: .after)
+        XCTAssertEqual(c.document.sections[0].tasks.map(\.text), ["C", "D", "A", "B"])
+    }
+
+    func testDroppingMultiSelectionBeforeTargetKeepsItsOrder() {
+        let c = makeController(list)
+        selectRange(c, from: "C", extending: 1)
+        c.drop(taskID: task(c, "D").id, onto: task(c, "A").id, placement: .before)
+        XCTAssertEqual(c.document.sections[0].tasks.map(\.text), ["C", "D", "A", "B"])
+    }
+
+    func testNestingMultiSelectionIsOneUndoStep() {
+        let c = makeController(list)
+        selectRange(c, from: "B", extending: 1)
+        c.drop(taskID: task(c, "B").id, onto: task(c, "A").id, placement: .asSubtask)
+        XCTAssertEqual(task(c, "A").subtasks.map(\.text), ["B", "C"])
+        c.undo()
+        XCTAssertEqual(c.document.sections[0].tasks.map(\.text), ["A", "B", "C", "D"])
+    }
+
+    func testDroppingMultiSelectionOntoOneOfItsOwnIsIgnored() {
+        let c = makeController(list)
+        selectRange(c, from: "A", extending: 2)
+        c.drop(taskID: task(c, "A").id, onto: task(c, "B").id, placement: .after)
+        XCTAssertEqual(c.document.sections[0].tasks.map(\.text), ["A", "B", "C", "D"])
+    }
+
+    func testDraggingUnselectedRowMovesOnlyThatRow() {
+        let c = makeController(list)
+        selectRange(c, from: "A", extending: 1)
+        c.drop(taskID: task(c, "C").id, onto: task(c, "A").id, placement: .before)
+        XCTAssertEqual(c.document.sections[0].tasks.map(\.text), ["C", "A", "B", "D"])
+    }
+
+    // MARK: - Archive
+
+    func testArchiveNeedsASavedFileAndSomethingDone() throws {
+        XCTAssertFalse(makeController("# Done\n\n- [x] A\n").canArchive, "untitled: no place for the archive")
+
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let doc = ListoFileDocument()
+        doc.text = "# Done\n\n- [x] A\n- [ ] B\n"
+        let c = DocumentController(fileDocument: doc, fileURL: dir.appendingPathComponent("list.md"))
+        c.selectedTaskID = task(c, "A").id
+        XCTAssertTrue(c.canArchive)
+
+        c.archiveCompleted()
+        XCTAssertEqual(c.document.allTasksRecursive.map(\.text), ["B"])
+        XCTAssertNil(c.selectedTaskID, "the archived task is no longer on the board")
+        XCTAssertFalse(c.canArchive)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: c.archiveURL.path))
+
+        c.undo()
+        XCTAssertEqual(c.document.allTasksRecursive.map(\.text), ["A", "B"])
+        XCTAssertEqual(doc.text, "# Done\n\n- [x] A\n- [ ] B\n")
+    }
 }

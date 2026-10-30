@@ -151,6 +151,49 @@ struct SettingsView: View {
             }
 
             Section {
+                Toggle(
+                    L("settings.capture.hotKey", "Atajo global ⌃⌥N para capturar una tarea"),
+                    isOn: $settings.quickCaptureHotKeyEnabled
+                )
+                .onChange(of: settings.quickCaptureHotKeyEnabled) { _, _ in
+                    QuickCapturePanel.shared.syncHotKey()
+                }
+
+                Toggle(
+                    L("settings.capture.menuBar", "Mostrar en la barra de menús"),
+                    isOn: $settings.quickCaptureMenuBarEnabled
+                )
+
+                LabeledContent(L("settings.capture.target", "Agregar a")) {
+                    HStack(spacing: 8) {
+                        Text(settings.quickCapturePath.map { URL(fileURLWithPath: $0).lastPathComponent }
+                             ?? L("settings.capture.lastOpened", "La última lista abierta"))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .help(settings.quickCapturePath ?? "")
+                        Button(L("settings.capture.choose", "Elegir…"), action: chooseCaptureList)
+                            .controlSize(.small)
+                        if settings.quickCapturePath != nil {
+                            Button(L("settings.capture.useLast", "Usar la última abierta")) {
+                                settings.quickCapturePath = nil
+                            }
+                            .controlSize(.small)
+                        }
+                    }
+                }
+
+                Text(L(
+                    "settings.capture.hint",
+                    "Las tareas capturadas van al final de la primera sección de la lista, tu bandeja de entrada. Las fechas como @mañana o @vie también funcionan ahí."
+                ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            } header: {
+                Label(L("capture.title", "Captura rápida"), systemImage: "tray.and.arrow.down")
+            }
+
+            Section {
                 Picker(L("settings.llmProvider", "Proveedor"), selection: $settings.llmProvider) {
                     ForEach(LLMProvider.allCases) { provider in
                         Text(provider.displayName).tag(provider)
@@ -214,5 +257,15 @@ struct SettingsView: View {
         settings.doneMoveDelaySeconds == 0
             ? L("settings.doneMoveDelay.disabled", "Desactivado")
             : "\(Int(settings.doneMoveDelaySeconds))s"
+    }
+
+    private func chooseCaptureList() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.init(filenameExtension: "md")].compactMap { $0 }
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        if panel.runModal() == .OK, let url = panel.url {
+            settings.quickCapturePath = url.path
+        }
     }
 }

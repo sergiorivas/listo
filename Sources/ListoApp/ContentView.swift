@@ -107,6 +107,9 @@ struct ContentView: View {
         .sheet(isPresented: $showLog) {
             LogPanelView(controller: controller)
         }
+        .sheet(item: $controller.duePickerTaskID) { target in
+            DueDatePickerSheet(controller: controller, taskID: target.id)
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             controller.checkForExternalChange()
         }

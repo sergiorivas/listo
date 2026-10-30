@@ -85,6 +85,8 @@ public enum LogFormatter {
             return "split into its subtasks: \"\(event.text)\""
         case .grouped:
             return "grouped tasks into: \"\(event.text)\""
+        case .archived:
+            return "archived: \"\(event.text)\""
         case .priorityChanged:
             // `text` carries the new marker as a trailing token when a
             // priority was set, and nothing when it was cleared (see

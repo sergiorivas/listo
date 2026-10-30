@@ -194,6 +194,21 @@ private struct TaskCommands: Commands {
 
             Divider()
 
+            Button(L("archive.run", "Archivar tareas completadas")) {
+                controller?.archiveCompleted()
+            }
+            .keyboardShortcut("a", modifiers: [.command, .option])
+            .disabled(controller?.canArchive != true)
+
+            Button(L("archive.open", "Abrir archivo de archivadas")) {
+                if let url = controller?.archiveURL {
+                    NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
+                }
+            }
+            .disabled(controller.map { $0.fileURL == nil || !FileManager.default.fileExists(atPath: $0.archiveURL.path) } ?? true)
+
+            Divider()
+
             Button(L("selection.clear", "Deseleccionar")) {
                 controller?.selectedTaskID = nil
             }
@@ -300,6 +315,7 @@ final class ListoAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        QuickCapturePanel.shared.syncHotKey()
         NotificationCenter.default.addObserver(
             self, selector: #selector(windowWillClose(_:)),
             name: NSWindow.willCloseNotification, object: nil)
@@ -481,6 +497,13 @@ struct ListoApp: App {
             UndoRedoCommands()
             TaskCommands()
         }
+
+        MenuBarExtra(isInserted: $settings.quickCaptureMenuBarEnabled) {
+            QuickCaptureView(closesAfterAdding: false) {}
+        } label: {
+            Label(L("capture.title", "Captura rápida"), systemImage: "checklist")
+        }
+        .menuBarExtraStyle(.window)
 
         Settings {
             SettingsView()

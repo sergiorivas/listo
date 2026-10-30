@@ -76,6 +76,9 @@ struct DueMenu: View {
             Button(L("due.today", "Hoy")) { set(offset: 0) }
             Button(L("due.tomorrow", "Mañana")) { set(offset: 1) }
             Button(L("due.nextWeek", "En una semana")) { set(offset: 7) }
+            Button(L("due.choose", "Elegir fecha…")) {
+                controller.duePickerTaskID = DuePickerTarget(id: task.id)
+            }
             if task.dueDate != nil {
                 Divider()
                 Button(L("due.clear", "Quitar fecha")) { set(offset: nil) }
@@ -89,6 +92,56 @@ struct DueMenu: View {
         let due = offset.map { TaskDueDate(date: Date()).adding(days: $0) }
         let text = TaskMetadata.settingDue(due, in: task.text)
         controller.rename(taskID: task.id, newText: text)
+    }
+}
+
+/// Which task the due-date sheet is for (`sheet(item:)` needs an
+/// `Identifiable`).
+struct DuePickerTarget: Identifiable {
+    let id: UUID
+}
+
+/// The calendar behind the Due date menu's "Choose date…": any day, not
+/// just the menu's Today/Tomorrow/In a week.
+struct DueDatePickerSheet: View {
+    @ObservedObject var controller: DocumentController
+    let taskID: UUID
+    @Environment(\.dismiss) private var dismiss
+    @State private var date = Date()
+
+    private var task: ListoTask? {
+        controller.document.allTasksRecursive.first { $0.id == taskID }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(task?.displayTitle ?? "")
+                .font(.headline)
+                .lineLimit(2)
+            DatePicker(L("due.menu", "Fecha límite"), selection: $date, displayedComponents: .date)
+                .datePickerStyle(.graphical)
+                .labelsHidden()
+            HStack {
+                if task?.dueDate != nil {
+                    Button(L("due.clear", "Quitar fecha")) { save(nil) }
+                }
+                Spacer()
+                Button(L("note.cancel", "Cancelar"), role: .cancel) { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button(L("due.set", "Poner fecha")) { save(TaskDueDate(date: date)) }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 300)
+        .onAppear { date = task?.dueDate?.date() ?? Date() }
+    }
+
+    private func save(_ due: TaskDueDate?) {
+        if let task {
+            controller.rename(taskID: task.id, newText: TaskMetadata.settingDue(due, in: task.text))
+        }
+        dismiss()
     }
 }
 

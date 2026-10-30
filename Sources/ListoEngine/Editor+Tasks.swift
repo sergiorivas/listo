@@ -8,6 +8,7 @@ extension ListoEditor {
         guard let section = document.allSectionsRecursive.first(where: { $0.id == sectionID }) else {
             throw ListoEditorError.sectionNotFound
         }
+        let text = resolvingDates(text)
         let insertionIndex = section.tasks.last.map { fullRange(of: $0).upperBound }
             ?? (section.lineRange?.lowerBound ?? lines.count - 1) + 1
         lines.insert("- [ ] \(text)", at: insertionIndex)
@@ -60,6 +61,7 @@ extension ListoEditor {
     @discardableResult
     public func renameTask(taskID: UUID, newText: String) throws -> LogEvent {
         guard let task = findTask(taskID) else { throw ListoEditorError.taskNotFound }
+        let newText = resolvingDates(newText)
         let line = task.lineRange!.lowerBound
         let (indent, _) = splitIndent(lines[line])
         let sectionPath = (document.location(of: task)?.section).map { document.path(to: $0) ?? [$0.title] }
@@ -218,6 +220,7 @@ extension ListoEditor {
         let ownLine = task.lineRange!.lowerBound
         let (indent, _) = splitIndent(lines[ownLine])
         let insertionIndex = fullRange(of: task).upperBound
+        let text = resolvingDates(text)
         lines.insert(indent + "- [ ] " + text, at: insertionIndex)
         try commit(trackingLine: insertionIndex)
 
