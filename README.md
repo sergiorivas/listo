@@ -11,11 +11,11 @@ way it does, see `CLAUDE.md`.
 
 | Kanban | Outline |
 | --- | --- |
-| ![Kanban board with To Do, In Progress and Done columns](docs/screenshots/kanban.png) | ![Outline view of the same list](docs/screenshots/outline.png) |
+| ![Kanban board with To Do, In Progress and Done columns](docs/screenshots/kanban-light.png) | ![Outline view of the same list](docs/screenshots/outline-light.png) |
 
-| Free Mode (raw Markdown) | Right-click menu |
+| Free Mode (raw Markdown) | Keyboard selection (dark) |
 | --- | --- |
-| ![Free Mode showing the raw, syntax-highlighted Markdown file](docs/screenshots/free.png) | ![Context menu with Edit note, Indent, Move to, and Delete](docs/screenshots/contextmenu.png) |
+| ![Free Mode showing the raw, syntax-highlighted Markdown file](docs/screenshots/free-light.png) | ![A selected task on the Kanban board, dark mode](docs/screenshots/keyboard-dark.png) |
 
 ## Structure
 
