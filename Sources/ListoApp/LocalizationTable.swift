@@ -81,6 +81,8 @@ enum LocalizationTable {
         "section.delete": ["es": "Eliminar sección", "en": "Delete section"],
         "column.collapse": ["es": "Colapsar columna", "en": "Collapse column"],
         "column.expand": ["es": "Expandir columna", "en": "Expand column"],
+        "section.collapse": ["es": "Colapsar sección", "en": "Collapse section"],
+        "section.expand": ["es": "Expandir sección", "en": "Expand section"],
         "section.taskCount": ["es": "%d tareas", "en": "%d tasks"],
         "section.delete.confirm.title": ["es": "¿Eliminar esta sección?", "en": "Delete this section?"],
         "section.delete.confirm.message": [

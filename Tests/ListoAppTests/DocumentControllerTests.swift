@@ -232,6 +232,48 @@ final class DocumentControllerTests: XCTestCase {
         XCTAssertEqual(c.selectedTaskID, task(c, "B").id)
     }
 
+    // MARK: - Collapsed Outline sections
+
+    private let threeSections = "# One\n\n- [ ] A\n\n# Two\n\n- [ ] B\n\n# Three\n\n- [ ] C\n"
+
+    private func section(_ c: DocumentController, _ title: String) -> ListoSection {
+        c.document.allSectionsRecursive.first { $0.title == title }!
+    }
+
+    func testNavigationSkipsCollapsedSections() {
+        let c = makeController(threeSections)
+        c.viewStyle = .outline
+        let two = section(c, "Two").id
+        c.setOutlineSection(two, collapsed: true)
+        defer { c.setOutlineSection(two, collapsed: false) }
+        c.selectedTaskID = task(c, "A").id
+        c.selectAdjacent(direction: 1, keepEditing: false)
+        XCTAssertEqual(c.selectedTaskID, task(c, "C").id)
+    }
+
+    func testCollapsingSectionDropsSelectionInsideIt() {
+        let c = makeController(threeSections)
+        c.viewStyle = .outline
+        let two = section(c, "Two").id
+        defer { c.setOutlineSection(two, collapsed: false) }
+        c.selectedTaskID = task(c, "A").id
+        c.setOutlineSection(two, collapsed: true)
+        XCTAssertEqual(c.selectedTaskID, task(c, "A").id, "selection elsewhere is kept")
+        c.setOutlineSection(two, collapsed: false)
+        c.selectedTaskID = task(c, "B").id
+        c.setOutlineSection(two, collapsed: true)
+        XCTAssertNil(c.selectedTaskID)
+    }
+
+    func testAddingTaskExpandsCollapsedSection() {
+        let c = makeController(threeSections)
+        let two = section(c, "Two")
+        c.setOutlineSection(two.id, collapsed: true)
+        defer { c.setOutlineSection(two.id, collapsed: false) }
+        c.addTaskAndEdit(toSectionID: two.id)
+        XCTAssertFalse(c.isOutlineSectionCollapsed(section(c, "Two")))
+    }
+
     func testSettingDueKeepsPriorityAndTags() {
         let c = makeController("# Todo\n\n- [ ] Pay rent #home !!\n")
         let t = task(c, "Pay rent #home")

@@ -706,3 +706,23 @@ ignores a multi-selection. A bare key equivalent is matched before the first
 responder sees the key, so if another text field in the window has focus
 (e.g. the filter search) the command inserts the space there instead. Not run
 in the live GUI.
+
+## Collapsible Outline sections
+
+Each Outline heading has a chevron that folds the section (its tasks and
+subsections) accordion-style; the count badge stays visible.
+
+- **State is presentation, kept out of the file** — `OutlineLayoutStore`
+  (UserDefaults), separate from Kanban's collapsed columns so folding one
+  view doesn't fold the other. Keyed by document path + the section's
+  `StableID` (level + title + parent), which persists across launches and,
+  unlike Kanban's title-only key, distinguishes same-named subsections.
+  Renaming a section unfolds it.
+- **Navigation skips folded rows**: `TaskFilter.displayOrder(hiding:)`, so
+  ↑/↓ and ⇧↑/⇧↓ in Outline never land on a hidden task. Folding a section
+  that holds the selection clears it, so the Task menu can't act on an
+  invisible row.
+- Adding a task to a folded section (its `+`, ⌘N) unfolds it and its
+  ancestors first (`revealOutlineSection`). Other moves into a folded
+  section (Move to…, drag) don't — the task just goes in out of sight.
+  Not run in the live GUI.

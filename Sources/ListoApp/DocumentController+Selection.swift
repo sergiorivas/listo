@@ -38,7 +38,7 @@ extension DocumentController {
     func navigationOrder(containing taskID: UUID) -> [UUID]? {
         switch viewStyle {
         case .outline:
-            return filter.displayOrder(in: document).map(\.id)
+            return filter.displayOrder(in: document, hiding: isOutlineSectionCollapsed).map(\.id)
         case .kanban:
             return document.sections.first(where: { section in
                 section.allTasksRecursive.contains { $0.id == taskID }
@@ -150,5 +150,44 @@ extension DocumentController {
               let idx = orderedIDs.firstIndex(of: taskID) else { return nil }
         let newIdx = idx + direction
         return orderedIDs.indices.contains(newIdx) ? orderedIDs[newIdx] : nil
+    }
+}
+
+// MARK: - Collapsed Outline sections
+
+extension DocumentController {
+    func isOutlineSectionCollapsed(_ section: ListoSection) -> Bool {
+        OutlineLayoutStore.shared.isCollapsed(documentKey: documentKey, sectionID: section.id)
+    }
+
+    /// Folds or unfolds an Outline section. Folding one that holds the
+    /// selection (or part of a multi-selection) drops the selection, so ↑/↓
+    /// and the Task menu never act on a row the user can't see.
+    func setOutlineSection(_ sectionID: UUID, collapsed: Bool) {
+        withAnimation(Motion.snappy) {
+            OutlineLayoutStore.shared.setCollapsed(collapsed, documentKey: documentKey, sectionID: sectionID)
+        }
+        guard collapsed,
+              let section = document.allSectionsRecursive.first(where: { $0.id == sectionID }) else { return }
+        let hidden = Set(section.allTasksRecursive.map(\.id))
+        if let selected = selectedTaskID, hidden.contains(selected) || !multiSelectedIDs.isDisjoint(with: hidden) {
+            editingTaskID = nil
+            selectedTaskID = nil
+        }
+    }
+
+    /// Unfolds `sectionID` and every section above it, so a row about to be
+    /// shown in it (a new task being typed) is actually on screen.
+    func revealOutlineSection(_ sectionID: UUID) {
+        func path(in sections: [ListoSection]) -> [ListoSection]? {
+            for section in sections {
+                if section.id == sectionID { return [section] }
+                if let rest = path(in: section.subsections) { return [section] + rest }
+            }
+            return nil
+        }
+        for section in path(in: document.sections) ?? [] where isOutlineSectionCollapsed(section) {
+            setOutlineSection(section.id, collapsed: false)
+        }
     }
 }

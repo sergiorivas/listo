@@ -33,6 +33,7 @@ struct OutlineBoardView: View {
 private struct OutlineSection: View {
     @ObservedObject var controller: DocumentController
     @ObservedObject private var settings = AppSettings.shared
+    @ObservedObject private var layout = OutlineLayoutStore.shared
     let section: ListoSection
     /// Heading nesting depth (H1/H2/H3), independent of subtask depth.
     let depth: Int
@@ -43,6 +44,8 @@ private struct OutlineSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 4) {
+                collapseButton
+
                 SectionTitleField(controller: controller, section: section, font: headingFont)
 
                 SectionCountBadge(count: controller.filter.count(in: section))
@@ -59,14 +62,22 @@ private struct OutlineSection: View {
             .onHover { isHeaderHovering = $0 }
             .padding(.leading, CGFloat(depth) * 16)
 
-            ForEach(controller.filter.visible(section.displayTasks), id: \.id) { task in
-                OutlineTaskRow(controller: controller, task: task, sectionDepth: depth + 1)
-                    .transition(Motion.rowTransition)
-            }
+            if !isCollapsed {
+                // One container so folding/unfolding is a single
+                // fade-and-unroll from under the heading, not every row
+                // transitioning on its own.
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(controller.filter.visible(section.displayTasks), id: \.id) { task in
+                        OutlineTaskRow(controller: controller, task: task, sectionDepth: depth + 1)
+                            .transition(Motion.rowTransition)
+                    }
 
-            ForEach(section.subsections, id: \.id) { sub in
-                OutlineSection(controller: controller, section: sub, depth: depth + 1)
-                    .transition(Motion.sectionTransition)
+                    ForEach(section.subsections, id: \.id) { sub in
+                        OutlineSection(controller: controller, section: sub, depth: depth + 1)
+                            .transition(Motion.sectionTransition)
+                    }
+                }
+                .transition(Motion.sectionTransition)
             }
         }
         .contentShape(Rectangle())
@@ -76,6 +87,25 @@ private struct OutlineSection: View {
             controller.move(taskID: uuid, toSectionID: section.id)
             return true
         } isTargeted: { isDropTargeted = $0 }
+    }
+
+    private var isCollapsed: Bool {
+        layout.isCollapsed(documentKey: controller.documentKey, sectionID: section.id)
+    }
+
+    private var collapseButton: some View {
+        Button {
+            controller.setOutlineSection(section.id, collapsed: !isCollapsed)
+        } label: {
+            Image(systemName: "chevron.down")
+                .font(settings.font(.caption, weight: .semibold))
+                .rotationEffect(.degrees(isCollapsed ? -90 : 0))
+                .foregroundStyle(.secondary)
+                .frame(width: 14)
+        }
+        .buttonStyle(.pressable)
+        .help(isCollapsed ? L("section.expand", "Expandir sección") : L("section.collapse", "Colapsar sección"))
+        .accessibilityLabel(isCollapsed ? L("section.expand", "Expandir sección") : L("section.collapse", "Colapsar sección"))
     }
 
     private var headingFont: Font {

@@ -79,17 +79,28 @@ public struct TaskFilter: Equatable, Sendable {
     }
 
     /// The tasks the views show for `section` (and its subsections), in the
-    /// order they show them — what ↑/↓ navigation walks.
-    public func displayOrder(in section: ListoSection, today: TaskDueDate = TaskDueDate(date: Date())) -> [ListoTask] {
+    /// order they show them — what ↑/↓ navigation walks. A section for which
+    /// `isHidden` is true (collapsed in the Outline) contributes nothing,
+    /// subsections included.
+    public func displayOrder(
+        in section: ListoSection,
+        today: TaskDueDate = TaskDueDate(date: Date()),
+        hiding isHidden: (ListoSection) -> Bool = { _ in false }
+    ) -> [ListoTask] {
+        guard !isHidden(section) else { return [] }
         func walk(_ tasks: [ListoTask]) -> [ListoTask] {
             visible(ListoTask.sortedByPriority(tasks), today: today).flatMap { task in
                 [task] + visibleSubtasks(of: task, today: today)
             }
         }
-        return walk(section.tasks) + section.subsections.flatMap { displayOrder(in: $0, today: today) }
+        return walk(section.tasks) + section.subsections.flatMap { displayOrder(in: $0, today: today, hiding: isHidden) }
     }
 
-    public func displayOrder(in document: ListoDocument, today: TaskDueDate = TaskDueDate(date: Date())) -> [ListoTask] {
-        document.sections.flatMap { displayOrder(in: $0, today: today) }
+    public func displayOrder(
+        in document: ListoDocument,
+        today: TaskDueDate = TaskDueDate(date: Date()),
+        hiding isHidden: (ListoSection) -> Bool = { _ in false }
+    ) -> [ListoTask] {
+        document.sections.flatMap { displayOrder(in: $0, today: today, hiding: isHidden) }
     }
 }

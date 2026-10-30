@@ -247,6 +247,7 @@ final class DocumentController: ObservableObject {
     /// existing row (`insertSiblingAndEdit`), never a separate text field
     /// competing for attention.
     func addTaskAndEdit(toSectionID sectionID: UUID) {
+        revealOutlineSection(sectionID)
         guard perform(animation: Motion.snappy, { try $0.addTask(text: "", toSectionID: sectionID) }) else { return }
         guard let newID = document.allSectionsRecursive.first(where: { $0.id == sectionID })?.tasks.last?.id else { return }
         selectedTaskID = newID
