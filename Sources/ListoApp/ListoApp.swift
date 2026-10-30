@@ -91,6 +91,20 @@ private struct TaskCommands: Commands {
             .keyboardShortcut("[", modifiers: .command)
             .disabled(controller?.selectedTaskID == nil || isEditingSelectedTask)
 
+            // Space checks/unchecks the selected task or subtask. A bare
+            // key equivalent is matched before the first responder sees the
+            // key, so if some other text field in the window (the filter
+            // bar's search) has focus, hand it the space it was typing.
+            Button(L("task.toggleDone", "Marcar/desmarcar como hecha")) {
+                if let field = NSApp.keyWindow?.firstResponder as? NSTextView {
+                    field.insertText(" ", replacementRange: field.selectedRange())
+                } else if let controller, let id = controller.selectedTaskID {
+                    controller.toggle(taskID: id)
+                }
+            }
+            .keyboardShortcut(.space, modifiers: [])
+            .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
+
             Button(L("task.delete", "Eliminar")) {
                 if let controller, let id = controller.selectedTaskID {
                     controller.delete(taskID: id)

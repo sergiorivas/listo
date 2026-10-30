@@ -696,3 +696,13 @@ under XCTest.
   `clipShape` — the highlight is a rounded shape itself, since a clip would
   hide it mid-flight. Kanban columns still clip, so a glide across columns
   cuts out at the column edge. Not run in the live GUI.
+
+## Space to check/uncheck
+
+With a task or subtask selected (not editing), Space toggles it
+(`TaskCommands`, calling `DocumentController.toggle` like the checkbox:
+sound, undo step, delayed Done move). Per-row like the checkbox, so it
+ignores a multi-selection. A bare key equivalent is matched before the first
+responder sees the key, so if another text field in the window has focus
+(e.g. the filter search) the command inserts the space there instead. Not run
+in the live GUI.
