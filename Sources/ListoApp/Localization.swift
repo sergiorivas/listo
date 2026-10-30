@@ -241,14 +241,20 @@ final class AppSettings: ObservableObject {
     /// ⌃⌥N anywhere opens the quick-capture box (`QuickCapturePanel`).
     @Published var quickCaptureHotKeyEnabled: Bool {
         didSet {
+            guard quickCaptureHotKeyEnabled != oldValue else { return }
             UserDefaults.standard.set(quickCaptureHotKeyEnabled, forKey: Keys.quickCaptureHotKeyEnabled)
             reloadToken &+= 1
         }
     }
     /// A capture box in the menu bar. Off by default: a new menu-bar icon
-    /// shouldn't appear unasked.
+    /// shouldn't appear unasked. Bound to `MenuBarExtra(isInserted:)`, which
+    /// SwiftUI writes back while it updates the scene: a write that doesn't
+    /// change anything must not bump `reloadToken`, or the app body
+    /// re-renders, the binding is written again, and so on until the main
+    /// thread runs out of stack (the v0.1.41 launch crash).
     @Published var quickCaptureMenuBarEnabled: Bool {
         didSet {
+            guard quickCaptureMenuBarEnabled != oldValue else { return }
             UserDefaults.standard.set(quickCaptureMenuBarEnabled, forKey: Keys.quickCaptureMenuBarEnabled)
             reloadToken &+= 1
         }
@@ -256,6 +262,7 @@ final class AppSettings: ObservableObject {
     /// The list quick capture adds to; `nil` means the most recently opened.
     @Published var quickCapturePath: String? {
         didSet {
+            guard quickCapturePath != oldValue else { return }
             UserDefaults.standard.set(quickCapturePath, forKey: Keys.quickCapturePath)
             reloadToken &+= 1
         }

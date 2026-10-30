@@ -40,7 +40,6 @@ import ListoEngine
 /// `objectWillChange`, matched here by `ContentView`'s
 /// `.focusedSceneObject(controller)` (not `.focusedSceneValue`).
 private struct TaskCommands: Commands {
-    @FocusedObject private var controller: DocumentController?
 
     /// While a task's title is a live text field, that field's own
     /// `onKeyPress` owns Tab/⇧Tab/Return for it directly — and, it turns
@@ -61,160 +60,213 @@ private struct TaskCommands: Commands {
     /// `selectedTaskID` self-heals: clicking a different row changes
     /// `selectedTaskID` immediately, which re-enables these regardless of
     /// whether the stale `editingTaskID` ever got cleared.
-    private var isEditingSelectedTask: Bool {
-        controller?.editingTaskID != nil && controller?.editingTaskID == controller?.selectedTaskID
-    }
+    // (Implemented as `DocumentController.isEditingSelectedTask`, used by
+    // every group below.)
 
     var body: some Commands {
+        // Small `View` groups rather than one long list in the menu: SwiftUI
+        // walks a menu's content with generic code that reserves stack in
+        // proportion to the content's size, and one 25-item tuple of
+        // buttons (titles, shortcuts, actions) made building the main menu
+        // run out of stack on launch (v0.1.41).
         CommandMenu(L("menu.task", "Tarea")) {
-            Button(L("task.new", "Nueva tarea")) {
-                controller?.addTaskToFirstSectionAndEdit()
-            }
-            .keyboardShortcut("n", modifiers: .command)
-            .disabled(controller?.mode != .app || controller?.document.sections.isEmpty != false)
-
-            Divider()
-
-            Button(L("task.indent", "Indentar")) {
-                if let controller, let id = controller.selectedTaskID {
-                    controller.indent(taskID: id)
-                }
-            }
-            .keyboardShortcut("]", modifiers: .command)
-            .disabled(controller?.selectedTaskID == nil || isEditingSelectedTask)
-
-            Button(L("task.outdent", "Quitar indentación")) {
-                if let controller, let id = controller.selectedTaskID {
-                    controller.outdent(taskID: id)
-                }
-            }
-            .keyboardShortcut("[", modifiers: .command)
-            .disabled(controller?.selectedTaskID == nil || isEditingSelectedTask)
-
-            // Space checks/unchecks the selected task or subtask. A bare
-            // key equivalent is matched before the first responder sees the
-            // key, so if some other text field in the window (the filter
-            // bar's search) has focus, hand it the space it was typing.
-            Button(L("task.toggleDone", "Marcar/desmarcar como hecha")) {
-                if let field = NSApp.keyWindow?.firstResponder as? NSTextView {
-                    field.insertText(" ", replacementRange: field.selectedRange())
-                } else if let controller, let id = controller.selectedTaskID {
-                    controller.toggle(taskID: id)
-                }
-            }
-            .keyboardShortcut(.space, modifiers: [])
-            .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
-
-            Button(L("task.delete", "Eliminar")) {
-                if let controller, let id = controller.selectedTaskID {
-                    controller.delete(taskID: id)
-                }
-            }
-            .keyboardShortcut(.delete, modifiers: [])
-            .disabled(controller?.selectedTaskID == nil || isEditingSelectedTask)
-
-            Button(L("task.moveUp", "Mover arriba")) {
-                if let controller, let id = controller.selectedTaskID {
-                    controller.reorder(taskID: id, direction: -1)
-                }
-            }
-            .keyboardShortcut(.upArrow, modifiers: .command)
-            .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
-
-            Button(L("task.moveDown", "Mover abajo")) {
-                if let controller, let id = controller.selectedTaskID {
-                    controller.reorder(taskID: id, direction: 1)
-                }
-            }
-            .keyboardShortcut(.downArrow, modifiers: .command)
-            .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
-
-            Button(L("task.split", "Dividir en tareas")) {
-                if let controller, let id = controller.selectedTaskID {
-                    controller.split(taskID: id)
-                }
-            }
-            .keyboardShortcut("t", modifiers: .command)
-            .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
-
-            Button(L("task.group", "Agrupar en una tarea")) {
-                if let controller, let id = controller.selectedTaskID {
-                    controller.group(taskID: id)
-                }
-            }
-            .keyboardShortcut("g", modifiers: .command)
-            .disabled(controller?.mode != .app || (controller?.multiSelectedIDs.count ?? 0) < 2 || isEditingSelectedTask)
-
-            // Kanban only: columns are what "previous/next section" means
-            // there. Also disabled while editing, where ⌘←/⌘→ are the text
-            // field's own "jump to start/end of line".
-            Button(L("task.moveToPreviousSection", "Mover a la sección anterior")) {
-                if let controller, let id = controller.selectedTaskID {
-                    controller.moveToAdjacentSection(taskID: id, direction: -1)
-                }
-            }
-            .keyboardShortcut(.leftArrow, modifiers: .command)
-            .disabled(controller?.mode != .app || controller?.viewStyle != .kanban
-                      || controller?.selectedTaskID == nil || isEditingSelectedTask)
-
-            Button(L("task.moveToNextSection", "Mover a la sección siguiente")) {
-                if let controller, let id = controller.selectedTaskID {
-                    controller.moveToAdjacentSection(taskID: id, direction: 1)
-                }
-            }
-            .keyboardShortcut(.rightArrow, modifiers: .command)
-            .disabled(controller?.mode != .app || controller?.viewStyle != .kanban
-                      || controller?.selectedTaskID == nil || isEditingSelectedTask)
-
-            Divider()
-
-            Button(L("task.previous", "Tarea anterior")) {
-                controller?.selectAdjacent(direction: -1, keepEditing: false)
-            }
-            .keyboardShortcut(.upArrow, modifiers: [])
-            .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
-
-            Button(L("task.next", "Tarea siguiente")) {
-                controller?.selectAdjacent(direction: 1, keepEditing: false)
-            }
-            .keyboardShortcut(.downArrow, modifiers: [])
-            .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
-
-            Button(L("task.extendSelectionUp", "Ampliar selección hacia arriba")) {
-                controller?.extendSelection(direction: -1)
-            }
-            .keyboardShortcut(.upArrow, modifiers: .shift)
-            .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
-
-            Button(L("task.extendSelectionDown", "Ampliar selección hacia abajo")) {
-                controller?.extendSelection(direction: 1)
-            }
-            .keyboardShortcut(.downArrow, modifiers: .shift)
-            .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
-
-            Divider()
-
-            Button(L("archive.run", "Archivar tareas completadas")) {
-                controller?.archiveCompleted()
-            }
-            .keyboardShortcut("a", modifiers: [.command, .option])
-            .disabled(controller?.canArchive != true)
-
-            Button(L("archive.open", "Abrir archivo de archivadas")) {
-                if let url = controller?.archiveURL {
-                    NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
-                }
-            }
-            .disabled(controller.map { $0.fileURL == nil || !FileManager.default.fileExists(atPath: $0.archiveURL.path) } ?? true)
-
-            Divider()
-
-            Button(L("selection.clear", "Deseleccionar")) {
-                controller?.selectedTaskID = nil
-            }
-            .keyboardShortcut(.cancelAction)
-            .disabled(controller?.selectedTaskID == nil)
+            TaskMenuEditItems()
+            TaskMenuStructureItems()
+            TaskMenuColumnItems()
+            TaskMenuNavigationItems()
+            TaskMenuArchiveItems()
         }
+    }
+}
+
+private struct TaskMenuEditItems: View {
+    @FocusedObject private var controller: DocumentController?
+    private var isEditingSelectedTask: Bool { controller?.isEditingSelectedTask ?? false }
+
+    var body: some View {
+        Button(L("task.new", "Nueva tarea")) {
+            controller?.addTaskToFirstSectionAndEdit()
+        }
+        .keyboardShortcut("n", modifiers: .command)
+        .disabled(controller?.mode != .app || controller?.document.sections.isEmpty != false)
+
+        Divider()
+
+        Button(L("task.indent", "Indentar")) {
+            if let controller, let id = controller.selectedTaskID {
+                controller.indent(taskID: id)
+            }
+        }
+        .keyboardShortcut("]", modifiers: .command)
+        .disabled(controller?.selectedTaskID == nil || isEditingSelectedTask)
+
+        Button(L("task.outdent", "Quitar indentación")) {
+            if let controller, let id = controller.selectedTaskID {
+                controller.outdent(taskID: id)
+            }
+        }
+        .keyboardShortcut("[", modifiers: .command)
+        .disabled(controller?.selectedTaskID == nil || isEditingSelectedTask)
+
+        // Space checks/unchecks the selected task or subtask. A bare
+        // key equivalent is matched before the first responder sees the
+        // key, so if some other text field in the window (the filter
+        // bar's search) has focus, hand it the space it was typing.
+        Button(L("task.toggleDone", "Marcar/desmarcar como hecha")) {
+            if let field = NSApp.keyWindow?.firstResponder as? NSTextView {
+                field.insertText(" ", replacementRange: field.selectedRange())
+            } else if let controller, let id = controller.selectedTaskID {
+                controller.toggle(taskID: id)
+            }
+        }
+        .keyboardShortcut(.space, modifiers: [])
+        .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
+    }
+}
+
+private struct TaskMenuStructureItems: View {
+    @FocusedObject private var controller: DocumentController?
+    private var isEditingSelectedTask: Bool { controller?.isEditingSelectedTask ?? false }
+
+    var body: some View {
+        Button(L("task.delete", "Eliminar")) {
+            if let controller, let id = controller.selectedTaskID {
+                controller.delete(taskID: id)
+            }
+        }
+        .keyboardShortcut(.delete, modifiers: [])
+        .disabled(controller?.selectedTaskID == nil || isEditingSelectedTask)
+
+        Button(L("task.moveUp", "Mover arriba")) {
+            if let controller, let id = controller.selectedTaskID {
+                controller.reorder(taskID: id, direction: -1)
+            }
+        }
+        .keyboardShortcut(.upArrow, modifiers: .command)
+        .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
+
+        Button(L("task.moveDown", "Mover abajo")) {
+            if let controller, let id = controller.selectedTaskID {
+                controller.reorder(taskID: id, direction: 1)
+            }
+        }
+        .keyboardShortcut(.downArrow, modifiers: .command)
+        .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
+
+        Button(L("task.split", "Dividir en tareas")) {
+            if let controller, let id = controller.selectedTaskID {
+                controller.split(taskID: id)
+            }
+        }
+        .keyboardShortcut("t", modifiers: .command)
+        .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
+
+        Button(L("task.group", "Agrupar en una tarea")) {
+            if let controller, let id = controller.selectedTaskID {
+                controller.group(taskID: id)
+            }
+        }
+        .keyboardShortcut("g", modifiers: .command)
+        .disabled(controller?.mode != .app || (controller?.multiSelectedIDs.count ?? 0) < 2 || isEditingSelectedTask)
+    }
+}
+
+private struct TaskMenuColumnItems: View {
+    @FocusedObject private var controller: DocumentController?
+    private var isEditingSelectedTask: Bool { controller?.isEditingSelectedTask ?? false }
+
+    var body: some View {
+        // Kanban only: columns are what "previous/next section" means
+        // there. Also disabled while editing, where ⌘←/⌘→ are the text
+        // field's own "jump to start/end of line".
+        Button(L("task.moveToPreviousSection", "Mover a la sección anterior")) {
+            if let controller, let id = controller.selectedTaskID {
+                controller.moveToAdjacentSection(taskID: id, direction: -1)
+            }
+        }
+        .keyboardShortcut(.leftArrow, modifiers: .command)
+        .disabled(controller?.mode != .app || controller?.viewStyle != .kanban
+                  || controller?.selectedTaskID == nil || isEditingSelectedTask)
+
+        Button(L("task.moveToNextSection", "Mover a la sección siguiente")) {
+            if let controller, let id = controller.selectedTaskID {
+                controller.moveToAdjacentSection(taskID: id, direction: 1)
+            }
+        }
+        .keyboardShortcut(.rightArrow, modifiers: .command)
+        .disabled(controller?.mode != .app || controller?.viewStyle != .kanban
+                  || controller?.selectedTaskID == nil || isEditingSelectedTask)
+    }
+}
+
+private struct TaskMenuNavigationItems: View {
+    @FocusedObject private var controller: DocumentController?
+    private var isEditingSelectedTask: Bool { controller?.isEditingSelectedTask ?? false }
+
+    var body: some View {
+        Divider()
+
+        Button(L("task.previous", "Tarea anterior")) {
+            controller?.selectAdjacent(direction: -1, keepEditing: false)
+        }
+        .keyboardShortcut(.upArrow, modifiers: [])
+        .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
+
+        Button(L("task.next", "Tarea siguiente")) {
+            controller?.selectAdjacent(direction: 1, keepEditing: false)
+        }
+        .keyboardShortcut(.downArrow, modifiers: [])
+        .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
+
+        Button(L("task.extendSelectionUp", "Ampliar selección hacia arriba")) {
+            controller?.extendSelection(direction: -1)
+        }
+        .keyboardShortcut(.upArrow, modifiers: .shift)
+        .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
+
+        Button(L("task.extendSelectionDown", "Ampliar selección hacia abajo")) {
+            controller?.extendSelection(direction: 1)
+        }
+        .keyboardShortcut(.downArrow, modifiers: .shift)
+        .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
+    }
+}
+
+private struct TaskMenuArchiveItems: View {
+    @FocusedObject private var controller: DocumentController?
+    private var isEditingSelectedTask: Bool { controller?.isEditingSelectedTask ?? false }
+
+    var body: some View {
+        Divider()
+
+        Button(L("archive.run", "Archivar tareas completadas")) {
+            controller?.archiveCompleted()
+        }
+        .keyboardShortcut("a", modifiers: [.command, .option])
+        .disabled(controller?.canArchive != true)
+
+        Button(L("archive.open", "Abrir archivo de archivadas")) {
+            if let url = controller?.archiveURL {
+                NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
+            }
+        }
+        .disabled(controller.map { $0.fileURL == nil || !FileManager.default.fileExists(atPath: $0.archiveURL.path) } ?? true)
+
+        Divider()
+
+        Button(L("selection.clear", "Deseleccionar")) {
+            controller?.selectedTaskID = nil
+        }
+        .keyboardShortcut(.cancelAction)
+        .disabled(controller?.selectedTaskID == nil)
+    }
+}
+
+extension DocumentController {
+    /// The row the Task menu acts on is the one whose title is a live text
+    /// field — see `TaskCommands` for why it compares with the selection.
+    var isEditingSelectedTask: Bool {
+        editingTaskID != nil && editingTaskID == selectedTaskID
     }
 }
 
@@ -435,7 +487,6 @@ final class ListoAppDelegate: NSObject, NSApplicationDelegate {
 struct ListoApp: App {
     @NSApplicationDelegateAdaptor(ListoAppDelegate.self) private var appDelegate
     @ObservedObject private var settings = AppSettings.shared
-    @ObservedObject private var recents = RecentFilesStore.shared
 
     var body: some Scene {
         DocumentGroup(newDocument: { ListoFileDocument() }) { file in
@@ -444,61 +495,18 @@ struct ListoApp: App {
                 .preferredColorScheme(settings.theme.colorScheme)
         }
         .commands {
-            CommandGroup(replacing: .newItem) {
-                Button {
-                    NSDocumentController.shared.newDocument(nil)
-                } label: {
-                    Label(L("menu.newList", "Nueva lista"), systemImage: "doc.badge.plus")
-                }
-                .keyboardShortcut("n", modifiers: [.command, .shift])
-
-                Menu {
-                    if recents.recentURLs.isEmpty {
-                        Text(L("menu.recent.empty", "Sin archivos recientes"))
-                    } else {
-                        ForEach(recents.recentURLs, id: \.self) { url in
-                            Button {
-                                NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
-                            } label: {
-                                Label(url.lastPathComponent, systemImage: "doc.text")
-                            }
-                        }
-                        Divider()
-                        Button(L("menu.recent.clear", "Borrar recientes")) {
-                            recents.clear()
-                        }
-                    }
-                } label: {
-                    Label(L("menu.recent", "Abrir reciente"), systemImage: "clock")
-                }
-            }
-            CommandMenu(L("menu.view", "Ver")) {
-                Button {
-                    settings.increaseFontSize()
-                } label: {
-                    Label(L("zoom.in", "Aumentar tamaño de fuente"), systemImage: "textformat.size.larger")
-                }
-                .keyboardShortcut("=", modifiers: .command)
-
-                Button {
-                    settings.decreaseFontSize()
-                } label: {
-                    Label(L("zoom.out", "Reducir tamaño de fuente"), systemImage: "textformat.size.smaller")
-                }
-                .keyboardShortcut("-", modifiers: .command)
-
-                Button {
-                    settings.resetFontSize()
-                } label: {
-                    Label(L("zoom.reset", "Restablecer tamaño de fuente"), systemImage: "textformat.size")
-                }
-                .keyboardShortcut("0", modifiers: .command)
-            }
+            // Contents in small `View`s, like the Task menu (see `TaskCommands`).
+            CommandGroup(replacing: .newItem) { FileMenuItems() }
+            CommandMenu(L("menu.view", "Ver")) { ViewMenuItems() }
             UndoRedoCommands()
             TaskCommands()
         }
 
-        MenuBarExtra(isInserted: $settings.quickCaptureMenuBarEnabled) {
+        MenuBarExtra(isInserted: Binding(
+            get: { settings.quickCaptureMenuBarEnabled },
+            // Only real changes: see `quickCaptureMenuBarEnabled`.
+            set: { if $0 != settings.quickCaptureMenuBarEnabled { settings.quickCaptureMenuBarEnabled = $0 } }
+        )) {
             QuickCaptureView(closesAfterAdding: false) {}
         } label: {
             Label(L("capture.title", "Captura rápida"), systemImage: "checklist")
@@ -510,5 +518,65 @@ struct ListoApp: App {
                 .environment(\.locale, settings.locale)
                 .preferredColorScheme(settings.theme.colorScheme)
         }
+    }
+}
+
+private struct FileMenuItems: View {
+    @ObservedObject private var recents = RecentFilesStore.shared
+
+    var body: some View {
+        Button {
+            NSDocumentController.shared.newDocument(nil)
+        } label: {
+            Label(L("menu.newList", "Nueva lista"), systemImage: "doc.badge.plus")
+        }
+        .keyboardShortcut("n", modifiers: [.command, .shift])
+
+        Menu {
+            if recents.recentURLs.isEmpty {
+                Text(L("menu.recent.empty", "Sin archivos recientes"))
+            } else {
+                ForEach(recents.recentURLs, id: \.self) { url in
+                    Button {
+                        NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
+                    } label: {
+                        Label(url.lastPathComponent, systemImage: "doc.text")
+                    }
+                }
+                Divider()
+                Button(L("menu.recent.clear", "Borrar recientes")) {
+                    recents.clear()
+                }
+            }
+        } label: {
+            Label(L("menu.recent", "Abrir reciente"), systemImage: "clock")
+        }
+    }
+}
+
+private struct ViewMenuItems: View {
+    @ObservedObject private var settings = AppSettings.shared
+
+    var body: some View {
+        Button {
+            settings.increaseFontSize()
+        } label: {
+            Label(L("zoom.in", "Aumentar tamaño de fuente"), systemImage: "textformat.size.larger")
+        }
+        .keyboardShortcut("=", modifiers: .command)
+
+        Button {
+            settings.decreaseFontSize()
+        } label: {
+            Label(L("zoom.out", "Reducir tamaño de fuente"), systemImage: "textformat.size.smaller")
+        }
+        .keyboardShortcut("-", modifiers: .command)
+
+        Button {
+            settings.resetFontSize()
+        } label: {
+            Label(L("zoom.reset", "Restablecer tamaño de fuente"), systemImage: "textformat.size")
+        }
+        .keyboardShortcut("0", modifiers: .command)
     }
 }

@@ -85,6 +85,19 @@ scattered at every depth) for no real benefit.
   earlier attempt keyed blank tasks' `StableID` on the previous sibling
   (`after:<text>`), so a Return-chained blank no longer reuses the old
   blank's id; that is kept but was not the cause.
+- **Launch crash in v0.1.41 (main thread out of stack while building the
+  main menu).** Two contributors, both fixed; the crash was intermittent and
+  could not be reproduced locally, so this is the best-supported reading of
+  the reports, not a confirmed single cause. (1) `MenuBarExtra(isInserted:)`
+  writes its binding back while SwiftUI updates the scene, and an
+  `@Published` assignment notifies even when the value is unchanged; every
+  notification re-ran `ListoApp.body`, nesting scene updates
+  (`graphDidChange` → `updateRootHost` → …). The binding now only assigns a
+  real change, and the quick-capture settings ignore same-value writes.
+  (2) The stack ran out in SwiftUI's generic menu-building code, which
+  reserves stack per level in proportion to the menu content's size; the
+  Task menu was one 25-item tuple of buttons. Its items, and the File and
+  View menus', now live in small `View` structs (`TaskMenuEditItems`, …).
 - **Can't edit a subtask's note** (historical, before subtasks lost note
   support entirely — see "Two-level model" above): each subtask row had its
   own `.popover(item:)` *nested inside* the parent `TaskChip`/
