@@ -38,13 +38,49 @@ public final class LogWriter {
         return event
     }
 
+    /// Events decoded so far, the byte offset just past the last complete
+    /// line they came from, and the file they came from (inode), so
+    /// `readAll` only decodes what was appended since the previous call.
+    private var cachedEvents: [LogEvent] = []
+    private var cachedOffset: UInt64 = 0
+    private var cachedFileNumber: Int?
+
+    /// Every event in the log, oldest first. Called after every App Mode
+    /// action, so it reads incrementally: the log is append-only, and
+    /// re-reading and re-decoding the whole (ever-growing) file each time put
+    /// avoidable work on the main thread — worse on an iCloud-synced folder.
+    /// Falls back to a full read if the file was replaced (new inode) or
+    /// shrank. A trailing line without its newline yet (another writer
+    /// mid-append) is left for the next call.
     public func readAll() throws -> [LogEvent] {
-        guard FileManager.default.fileExists(atPath: logFileURL.path) else { return [] }
-        let text = try String(contentsOf: logFileURL, encoding: .utf8)
-        let decoder = JSONDecoder()
-        return text.split(separator: "\n").compactMap { line in
-            guard let data = line.data(using: .utf8) else { return nil }
-            return try? decoder.decode(LogEvent.self, from: data)
+        try queue.sync {
+            let path = logFileURL.path
+            guard let attrs = try? FileManager.default.attributesOfItem(atPath: path) else {
+                cachedEvents = []; cachedOffset = 0; cachedFileNumber = nil
+                return []
+            }
+            let size = (attrs[.size] as? NSNumber)?.uint64Value ?? 0
+            let fileNumber = (attrs[.systemFileNumber] as? NSNumber)?.intValue
+            if fileNumber != cachedFileNumber || size < cachedOffset {
+                cachedEvents = []; cachedOffset = 0; cachedFileNumber = fileNumber
+            }
+            guard size > cachedOffset else { return cachedEvents }
+
+            let handle = try FileHandle(forReadingFrom: logFileURL)
+            defer { try? handle.close() }
+            try handle.seek(toOffset: cachedOffset)
+            let data = try handle.readToEnd() ?? Data()
+            guard let lastNewline = data.lastIndex(of: 0x0A) else { return cachedEvents }
+            let complete = data[data.startIndex...lastNewline]
+
+            let decoder = JSONDecoder()
+            for line in complete.split(separator: 0x0A) {
+                if let event = try? decoder.decode(LogEvent.self, from: Data(line)) {
+                    cachedEvents.append(event)
+                }
+            }
+            cachedOffset += UInt64(complete.count)
+            return cachedEvents
         }
     }
 }

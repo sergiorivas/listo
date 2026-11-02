@@ -106,6 +106,8 @@ final class DocumentController: ObservableObject {
     /// reference `checkForExternalChange` compares the disk against.
     var diskBaseline: String
     var fileURL: URL?
+    /// The deferred save scheduled by `saveIfPossible`, if any.
+    private var pendingSave: DispatchWorkItem?
 
     init(fileDocument: ListoFileDocument, fileURL: URL?) {
         self.fileDocument = fileDocument
@@ -596,10 +598,44 @@ final class DocumentController: ObservableObject {
     /// waiting for its own autosave timer. Only once the document already has
     /// a real path: on a brand-new, never-saved document this would pop the
     /// "Save As" panel on every action.
+    ///
+    /// Deferred by `saveDelay` and coalesced, not run inline: `NSDocument.
+    /// save` is synchronous on the main thread and goes through file
+    /// coordination, which on an iCloud-synced folder can wait on the sync
+    /// daemon (still uploading the previous save) — that made checking a task
+    /// visibly lag. A burst of actions (a check plus its Done move, a run of
+    /// ⌘↑) now becomes one save. The document is marked edited immediately,
+    /// so if the window closes or the app quits before the timer fires,
+    /// Cocoa's own autosave still writes it.
     func saveIfPossible() {
-        if fileURL != nil {
-            NSApp?.sendAction(#selector(NSDocument.save(_:)), to: nil, from: nil)
+        // `NSApp` is nil under XCTest, where there is no document to save.
+        guard let app = NSApp, fileURL != nil else { return }
+        guard let nsDocument = nsDocument else {
+            // Not expected (the URL is the document's own), but never skip a
+            // save over it: fall back to the old immediate responder-chain save.
+            app.sendAction(#selector(NSDocument.save(_:)), to: nil, from: nil)
+            return
         }
+        nsDocument.updateChangeCount(.changeDone)
+        pendingSave?.cancel()
+        let work = DispatchWorkItem { [weak self, weak nsDocument] in
+            self?.pendingSave = nil
+            guard let nsDocument, nsDocument.isDocumentEdited else { return }
+            nsDocument.save(nil)
+        }
+        pendingSave = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.saveDelay, execute: work)
+    }
+
+    /// How long `saveIfPossible` waits for more actions before writing.
+    static let saveDelay: TimeInterval = 0.6
+
+    /// This window's own `NSDocument` — looked up by URL rather than sending
+    /// `save:` down the responder chain, which saves whichever document is
+    /// key at the moment the deferred save fires.
+    private var nsDocument: NSDocument? {
+        guard let fileURL else { return nil }
+        return NSDocumentController.shared.document(for: fileURL)
     }
 
     /// Highlights `taskID`'s row for a moment (`RowHighlight`), fading out

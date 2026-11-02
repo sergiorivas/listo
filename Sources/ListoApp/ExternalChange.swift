@@ -5,7 +5,7 @@ import Foundation
 ///
 /// Three texts decide it: `disk` (what the file holds now), `baseline` (what
 /// it held when this window last read or saved it) and `local` (what the
-/// window has in memory now — App Mode saves after every action, so this only
+/// window has in memory now — App Mode saves shortly after every action, so this only
 /// differs from `baseline` while a save is pending or Free Mode has unsaved
 /// typing).
 enum ExternalChange {

@@ -94,6 +94,22 @@ scattered at every depth) for no real benefit.
   note-edit request up via a closure (`onEditNote`) instead of opening its
   own — see "Things-style row selection" below for how that structure is
   still used today.
+- **Checking a task lagged on an iCloud-synced file**: every App Mode
+  action called `NSDocument.save` inline (synchronous, main thread, through
+  file coordination, which on an iCloud Drive folder can wait on the sync
+  daemon still uploading the previous save), and a check that triggers the
+  Done move saved twice. Then `refreshLog` re-read and re-decoded the
+  whole ever-growing `.jsonl` after every action. Now `saveIfPossible`
+  marks the document edited (`updateChangeCount`) and saves 0.6s later,
+  coalescing bursts into one write; if the window closes or the app quits
+  first, Cocoa's autosave writes the edited document. It saves this
+  window's own `NSDocument` (looked up by URL) rather than sending `save:`
+  down the responder chain, which by then could hit another window.
+  `LogWriter.readAll` reads incrementally (byte offset + inode; full
+  reread if the file was replaced or shrank; an unfinished last line waits
+  for the next call). Raw and coordinated writes to `~/Documents` measured
+  fast while iCloud was idle; the stall under active sync wasn't reproduced
+  or measured, and the fix wasn't run in the live GUI.
 
 ## Priority (`!`, `!!`, `!!!`)
 
@@ -645,8 +661,8 @@ touch lost `private` (internal). `DocumentController` gained
 (commit/cancel/Return/Tab/↑↓) both row views used to duplicate, and
 `SectionButtons` the add/delete section buttons. The app target now has a
 test target (`ListoAppTests`, `@testable import ListoApp`) covering the
-controller; `saveIfPossible` uses `NSApp?` because there is no NSApplication
-under XCTest.
+controller; `saveIfPossible` returns early without `NSApp` because there is
+no NSApplication under XCTest.
 
 ## UI polish pass (empty states, hover actions, filter bar)
 

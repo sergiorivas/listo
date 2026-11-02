@@ -52,4 +52,54 @@ final class LogWriterTests: XCTestCase {
             XCTAssertNoThrow(try JSONSerialization.jsonObject(with: Data(line.utf8)))
         }
     }
+
+    private func event(_ id: String) -> LogEvent {
+        LogEvent(file: "backlog.md", event: .completed, taskID: id, sectionPath: nil, text: id, source: .app, interpretedBy: .userAction)
+    }
+
+    func testReadAllPicksUpLaterAppendsIncrementally() throws {
+        let writer = LogWriter(documentURL: fileURL)
+        try writer.append(event("t_1"))
+        XCTAssertEqual(try writer.readAll().map(\.taskID), ["t_1"])
+        try writer.append(event("t_2"))
+        try writer.append(event("t_3"))
+        XCTAssertEqual(try writer.readAll().map(\.taskID), ["t_1", "t_2", "t_3"])
+        XCTAssertEqual(try writer.readAll().map(\.taskID), ["t_1", "t_2", "t_3"])
+    }
+
+    func testReadAllSeesAppendsFromAnotherWriter() throws {
+        let reader = LogWriter(documentURL: fileURL)
+        try reader.append(event("t_1"))
+        _ = try reader.readAll()
+        try LogWriter(documentURL: fileURL).append(event("t_2"))
+        XCTAssertEqual(try reader.readAll().map(\.taskID), ["t_1", "t_2"])
+    }
+
+    func testReadAllLeavesAnUnfinishedLastLineForLater() throws {
+        let writer = LogWriter(documentURL: fileURL)
+        try writer.append(event("t_1"))
+        let logURL = LogWriter.logFileURL(for: fileURL)
+        let line = String(data: try JSONEncoder().encode(event("t_2")), encoding: .utf8)!
+        let half = line.index(line.startIndex, offsetBy: line.count / 2)
+        let handle = try FileHandle(forWritingTo: logURL)
+        handle.seekToEndOfFile()
+        handle.write(Data(line[..<half].utf8))
+        XCTAssertEqual(try writer.readAll().map(\.taskID), ["t_1"])
+        handle.write(Data((line[half...] + "\n").utf8))
+        try handle.close()
+        XCTAssertEqual(try writer.readAll().map(\.taskID), ["t_1", "t_2"])
+    }
+
+    func testReadAllStartsOverWhenTheFileIsReplaced() throws {
+        let writer = LogWriter(documentURL: fileURL)
+        try writer.append(event("t_1"))
+        try writer.append(event("t_2"))
+        _ = try writer.readAll()
+        let logURL = LogWriter.logFileURL(for: fileURL)
+        let replacement = String(data: try JSONEncoder().encode(event("t_9")), encoding: .utf8)! + "\n"
+        try replacement.write(to: logURL, atomically: true, encoding: .utf8)
+        XCTAssertEqual(try writer.readAll().map(\.taskID), ["t_9"])
+        try FileManager.default.removeItem(at: logURL)
+        XCTAssertEqual(try writer.readAll().count, 0)
+    }
 }
