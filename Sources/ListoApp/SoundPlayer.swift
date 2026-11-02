@@ -1,4 +1,5 @@
 import AppKit
+import AudioToolbox
 import ListoEngine
 
 /// Completion/delete feedback sounds, gated by `AppSettings`.
@@ -23,11 +24,27 @@ enum SoundPlayer {
         play(named: "Funk")
     }
 
-    /// Restart rather than let a quick second sound be swallowed by the
-    /// still-playing first one (`play()` is a no-op while playing).
+    /// Through the system sound server, not `NSSound`: `NSSound.play()`
+    /// starts the audio device synchronously on the main thread, and an
+    /// output that sleeps when idle (a monitor's speakers over DisplayPort/
+    /// HDMI) took seconds to wake — a beachball on every check or delete.
+    /// `AudioServicesPlaySystemSound` hands the sound to the server and
+    /// returns at once; at worst the sound itself is late. Overlapping
+    /// plays are fine, so a quick second sound isn't swallowed either.
     private static func play(named name: String) {
-        let sound = NSSound(named: name)
-        sound?.stop()
-        sound?.play()
+        guard let id = soundID(named: name) else { return }
+        AudioServicesPlaySystemSound(id)
+    }
+
+    /// Registered once per sound and kept for the app's lifetime.
+    private static var soundIDs: [String: SystemSoundID] = [:]
+
+    private static func soundID(named name: String) -> SystemSoundID? {
+        if let id = soundIDs[name] { return id }
+        let url = URL(fileURLWithPath: "/System/Library/Sounds/\(name).aiff")
+        var id: SystemSoundID = 0
+        guard AudioServicesCreateSystemSoundID(url as CFURL, &id) == kAudioServicesNoError else { return nil }
+        soundIDs[name] = id
+        return id
     }
 }

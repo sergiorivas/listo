@@ -109,7 +109,21 @@ scattered at every depth) for no real benefit.
   reread if the file was replaced or shrank; an unfinished last line waits
   for the next call). Raw and coordinated writes to `~/Documents` measured
   fast while iCloud was idle; the stall under active sync wasn't reproduced
-  or measured, and the fix wasn't run in the live GUI.
+  or measured, and the fix wasn't run in the live GUI. It turned out not to
+  be the cause of the lag the user saw — see the next entry.
+- **Beachball on check (Space) or delete, local files too**: not the save
+  at all. `SoundPlayer` played the completion/delete sound with
+  `NSSound.play()`, which starts the audio device *synchronously on the main
+  thread*. The output was a monitor's speakers over DisplayPort, which sleep
+  when idle; a sample of a probed release build showed one toggle taking
+  10.2s, ~7.4s of it in `AudioDeviceStart` → `HALB_IOThread::_WaitForState`,
+  while a toggle right after (device awake) took 62ms. Free Mode plays no
+  sounds, hence "only App Mode". Now played with
+  `AudioServicesPlaySystemSound` (system sound server, returns at once;
+  IDs registered once): toggles measured 31–41ms after 8s idle gaps. Side
+  effect: the sounds follow System Settings' "Play sound effects through"
+  device and alert volume, like other UI sounds, rather than the main
+  output.
 
 ## Priority (`!`, `!!`, `!!!`)
 
