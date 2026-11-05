@@ -726,3 +726,29 @@ subsections) accordion-style; the count badge stays visible.
   ancestors first (`revealOutlineSection`). Other moves into a folded
   section (Move to…, drag) don't — the task just goes in out of sight.
   Not run in the live GUI.
+
+## Keeping the selection on screen
+
+Rows carry `.id(task.id)` and each scroll view (every Kanban column, the
+Outline list) sits in a `ScrollViewReader` that scrolls to `selectedTaskID`
+whenever it changes (`scrollsToSelection`, in `Motion.swift`): ⌘N adding at
+the end of a long column, ↑/↓ past the edge, a move landing out of sight.
+Anchor `nil` (scroll only as far as needed), deferred a runloop turn so a
+just-inserted row is laid out. Not run in the live GUI.
+
+## Menu bar quick-add (⌃⌥⌘T)
+
+A menu bar icon plus a system-wide ⌃⌥⌘T open a small field that adds a task
+to the first column of the frontmost open document (`QuickAdd.swift`).
+
+- **Carbon `RegisterEventHotKey`**, not an `NSEvent` global monitor: no
+  Accessibility permission, and the keystroke isn't also delivered to the
+  frontmost app.
+- **Non-activating `NSPanel`, not `NSPopover`**: a popover only takes typing
+  once the app is activated, which raises every Listo window. The panel gets
+  key focus while Listo stays behind; it closes on Return, Esc or a click
+  elsewhere (`windowDidResignKey`).
+- **Target document**: `DocumentController.live` (weak registry), matched
+  against `NSApp.orderedWindows`' document URLs; falls back to any open one.
+  Disabled with a message in Free Mode, with no document, or no columns.
+- Not run in the live GUI.

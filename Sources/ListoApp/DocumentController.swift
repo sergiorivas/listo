@@ -29,6 +29,10 @@ import ListoEngine
 /// there is exactly one writer and immediate persistence, without the race.
 @MainActor
 final class DocumentController: ObservableObject {
+    /// Every open document's controller, weakly held — for the menu bar
+    /// quick-add (`QuickAddController`), which lives outside any window.
+    static let live = NSHashTable<DocumentController>.weakObjects()
+
     @Published internal(set) var document: ListoDocument
     @Published var mode: EditMode = .app {
         didSet { modeChanged(from: oldValue) }
@@ -116,6 +120,7 @@ final class DocumentController: ObservableObject {
         self.lastKnownText = fileDocument.text
         self.diskBaseline = fileDocument.text
         refreshLog()
+        Self.live.add(self)
         fileDocument.onWillSave = { [weak self] text in
             self?.diskBaseline = text
             self?.handleSave(currentText: text)

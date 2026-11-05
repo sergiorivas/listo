@@ -187,3 +187,23 @@ extension View {
         modifier(DropTargetHighlight(isTargeted: isTargeted, cornerRadius: cornerRadius))
     }
 }
+
+// MARK: - Keep the selection on screen
+
+extension View {
+    /// Scrolls the enclosing `ScrollView` (via `proxy`) to the selected row
+    /// whenever the selection changes — ⌘N / "+" adding a task at the end of
+    /// a long section, ↑/↓ walking past the visible area, a move landing out
+    /// of sight. Rows carry `.id(task.id)`; a reader whose scroll view doesn't
+    /// hold that id (another Kanban column) does nothing. Anchor `nil` scrolls
+    /// only as far as needed, so a row already visible doesn't jump.
+    /// Deferred a runloop turn so a just-inserted row has been laid out.
+    func scrollsToSelection(of controller: DocumentController, using proxy: ScrollViewProxy) -> some View {
+        onChange(of: controller.selectedTaskID) { _, id in
+            guard let id else { return }
+            DispatchQueue.main.async {
+                withAnimation(Motion.snappy) { proxy.scrollTo(id) }
+            }
+        }
+    }
+}

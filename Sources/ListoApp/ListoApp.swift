@@ -303,6 +303,7 @@ final class ListoAppDelegate: NSObject, NSApplicationDelegate {
         NotificationCenter.default.addObserver(
             self, selector: #selector(windowWillClose(_:)),
             name: NSWindow.willCloseNotification, object: nil)
+        QuickAddController.shared.install()
         // A beat of delay so a file double-clicked in Finder (delivered just
         // after launch) wins over the "last file" logic.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in

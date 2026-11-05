@@ -16,6 +16,7 @@ struct OutlineBoardView: View {
     }
 
     private var list: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 ForEach(controller.document.sections, id: \.id) { section in
@@ -26,6 +27,8 @@ struct OutlineBoardView: View {
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .scrollsToSelection(of: controller, using: proxy)
         }
     }
 }
@@ -69,6 +72,7 @@ private struct OutlineSection: View {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(controller.filter.visible(section.displayTasks), id: \.id) { task in
                         OutlineTaskRow(controller: controller, task: task, sectionDepth: depth + 1)
+                            .id(task.id)
                             .transition(Motion.rowTransition)
                     }
 
@@ -195,6 +199,7 @@ private struct OutlineTaskNode: View {
                             allowMove: false,
                             onEditNote: onEditNote
                         )
+                        .id(sub.id)
                         .transition(Motion.rowTransition)
                     }
                 }

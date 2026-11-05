@@ -238,6 +238,7 @@ private struct KanbanColumn: View {
     }
 
     private var taskList: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 6) {
                 if section.tasks.isEmpty, section.subsections.isEmpty, !controller.filter.isActive {
@@ -251,6 +252,7 @@ private struct KanbanColumn: View {
                 }
                 ForEach(controller.filter.visible(section.displayTasks), id: \.id) { task in
                     TaskChip(controller: controller, task: task)
+                        .id(task.id)
                         .transition(Motion.rowTransition)
                 }
                 ForEach(section.subsections, id: \.id) { sub in
@@ -258,6 +260,8 @@ private struct KanbanColumn: View {
                         .transition(Motion.sectionTransition)
                 }
             }
+        }
+        .scrollsToSelection(of: controller, using: proxy)
         }
     }
 
@@ -325,6 +329,7 @@ private struct KanbanSubgroup: View {
             .onHover { isHeaderHovering = $0 }
             ForEach(controller.filter.visible(section.displayTasks), id: \.id) { task in
                 TaskChip(controller: controller, task: task)
+                    .id(task.id)
                     .transition(Motion.rowTransition)
             }
             ForEach(section.subsections, id: \.id) { sub in
@@ -415,6 +420,7 @@ private struct TaskRow: View {
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(controller.filter.visibleSubtasks(of: task), id: \.id) { sub in
                         TaskRow(controller: controller, task: sub, depth: depth + 1, allowMove: false, onEditNote: onEditNote)
+                            .id(sub.id)
                             .transition(Motion.rowTransition)
                     }
                 }
