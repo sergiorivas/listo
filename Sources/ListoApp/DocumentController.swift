@@ -109,6 +109,11 @@ final class DocumentController: ObservableObject {
     /// What the file held when this window last read or saved it — the
     /// reference `checkForExternalChange` compares the disk against.
     var diskBaseline: String
+    /// The tree as it was when Free Mode was entered, so leaving it can spot
+    /// tasks ticked by hand in the meantime and give them the delayed Done
+    /// move (`scheduleDoneMovesForNewlyCompleted`). Not done at save time:
+    /// the move would rewrite the text while the user is still typing.
+    private var documentBeforeFreeMode: ListoDocument?
     var fileURL: URL?
 
     init(fileDocument: ListoFileDocument, fileURL: URL?) {
@@ -158,14 +163,19 @@ final class DocumentController: ObservableObject {
         guard mode != oldValue else { return }
         if mode == .freeEdit {
             lastKnownText = fileDocument.text
+            documentBeforeFreeMode = document
         } else {
             // Leaving Modo Libre: interpret whatever changed since the last
             // save (or since entering Modo Libre, if never saved) so the
             // structured views and the log are caught up, same as an
             // explicit save would do.
-            handleSave(currentText: fileDocument.text)
+            handleSave(currentText: fileDocument.text, leavingFreeMode: true)
             editor.loadExternalText(fileDocument.text)
             document = editor.document
+            if let before = documentBeforeFreeMode {
+                scheduleDoneMovesForNewlyCompleted(since: before)
+                documentBeforeFreeMode = nil
+            }
         }
     }
 
@@ -176,8 +186,11 @@ final class DocumentController: ObservableObject {
     /// persisted (Cmd+S, the toolbar Save button, or macOS autosave), and
     /// also when leaving Modo Libre. Computes "what changed since last
     /// time" once and logs it — no live watcher, no per-keystroke debounce.
-    private func handleSave(currentText: String) {
-        guard mode == .freeEdit else { return }
+    /// `leavingFreeMode`: `mode` is already `.app` by the time `modeChanged`
+    /// runs, so without it the guard below skipped that call and an unsaved
+    /// Free Mode edit was never logged.
+    private func handleSave(currentText: String, leavingFreeMode: Bool = false) {
+        guard mode == .freeEdit || leavingFreeMode else { return }
         let oldText = lastKnownText
         guard oldText != currentText else { return }
         lastKnownText = currentText

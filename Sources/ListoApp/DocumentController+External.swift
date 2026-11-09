@@ -42,6 +42,7 @@ extension DocumentController {
         diskBaseline = disk
         lastKnownText = disk
         pendingExternalText = nil
+        let before = document
         editor.loadExternalText(disk)
         withAnimation(Motion.snappy) {
             document = editor.document
@@ -51,6 +52,7 @@ extension DocumentController {
         }
         syncModificationDate()
         refreshLog()
+        scheduleDoneMovesForNewlyCompleted(since: before)
     }
 
     /// Tell Cocoa we've seen the file's current version, so its own

@@ -95,3 +95,67 @@ final class ExternalChangeControllerTests: XCTestCase {
         XCTAssertFalse(c.canUndo, "snapshots predate the outside edit")
     }
 }
+
+/// Tasks completed outside App Mode (another app, Free Mode) get the same
+/// delayed move to the "Done" section as a checkbox click.
+@MainActor
+final class DoneMoveOutsideAppModeTests: XCTestCase {
+    private var url: URL!
+    private var savedDelay: Double = 0
+    private let start = "# Todo\n\n- [ ] A\n- [x] Old\n\n# Done\n\n- [x] Z\n"
+
+    override func setUpWithError() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("done-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        url = dir.appendingPathComponent("list.md")
+        savedDelay = AppSettings.shared.doneMoveDelaySeconds
+        AppSettings.shared.doneMoveDelaySeconds = 0.05
+    }
+
+    override func tearDownWithError() throws {
+        AppSettings.shared.doneMoveDelaySeconds = savedDelay
+        try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+    }
+
+    private func makeController() throws -> DocumentController {
+        try start.write(to: url, atomically: true, encoding: .utf8)
+        let doc = ListoFileDocument()
+        doc.text = start
+        return DocumentController(fileDocument: doc, fileURL: url)
+    }
+
+    private func waitForDelay() {
+        let done = expectation(description: "delay")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { done.fulfill() }
+        wait(for: [done], timeout: 2)
+    }
+
+    func testTaskCheckedInAnotherAppMovesToDone() throws {
+        let c = try makeController()
+        try start.replacingOccurrences(of: "- [ ] A", with: "- [x] A").write(to: url, atomically: true, encoding: .utf8)
+        c.checkForExternalChange()
+        XCTAssertEqual(c.document.sections[0].tasks.map(\.text), ["A", "Old"], "not before the delay")
+        waitForDelay()
+        XCTAssertEqual(c.document.sections[0].tasks.map(\.text), ["Old"], "an already-done task elsewhere stays put")
+        XCTAssertEqual(c.document.sections[1].tasks.map(\.text), ["Z", "A"])
+    }
+
+    func testTaskCheckedInFreeModeMovesAfterLeavingIt() throws {
+        let c = try makeController()
+        c.mode = .freeEdit
+        c.fileDocument.text = start.replacingOccurrences(of: "- [ ] A", with: "- [x] A")
+        waitForDelay()
+        XCTAssertEqual(c.fileDocument.text, start.replacingOccurrences(of: "- [ ] A", with: "- [x] A"), "nothing moves while typing")
+        c.mode = .app
+        waitForDelay()
+        XCTAssertEqual(c.document.sections[1].tasks.map(\.text), ["Z", "A"])
+    }
+
+    func testLeavingFreeModeWithoutSavingLogsTheChange() throws {
+        let c = try makeController()
+        c.mode = .freeEdit
+        c.fileDocument.text = start.replacingOccurrences(of: "- [ ] A", with: "- [x] A")
+        c.mode = .app
+        XCTAssertTrue(c.logEvents.contains { $0.event == .completed && $0.text == "A" })
+    }
+}

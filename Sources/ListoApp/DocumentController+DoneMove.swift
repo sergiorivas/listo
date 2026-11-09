@@ -28,7 +28,7 @@ extension DocumentController {
         let doneSectionID = doneSection.id
 
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self else { return }
+            guard let self, self.mode != .freeEdit else { return }
             guard let task = self.document.allTasksRecursive.first(where: { $0.id == taskID }),
                   task.state == .done,
                   self.document.location(of: task)?.parent == nil,
@@ -36,6 +36,20 @@ extension DocumentController {
                   liveDoneSection.tasks.last?.id != taskID
             else { return }
             self.move(taskID: taskID, toSectionID: doneSectionID)
+        }
+    }
+
+    /// Same delayed move, for tasks completed *outside* App Mode: ticked in
+    /// another app (picked up by `checkForExternalChange`) or typed `[x]` in
+    /// Free Mode. Only tasks that were open in `oldDocument` and are done
+    /// now qualify — not every done task in the file, which would sweep up
+    /// ones the user deliberately left done in another column, nor a done
+    /// task whose id changed because its text was edited too (ids are
+    /// content-derived, so that one reads as "new" and is left alone).
+    func scheduleDoneMovesForNewlyCompleted(since oldDocument: ListoDocument) {
+        let wasOpen = Set(oldDocument.allTasksRecursive.filter { $0.state != .done }.map(\.id))
+        for task in document.allTasksRecursive where task.state == .done && wasOpen.contains(task.id) {
+            scheduleDoneMoveIfNeeded(forTaskID: task.id)
         }
     }
 

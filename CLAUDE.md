@@ -85,6 +85,11 @@ scattered at every depth) for no real benefit.
   earlier attempt keyed blank tasks' `StableID` on the previous sibling
   (`after:<text>`), so a Return-chained blank no longer reuses the old
   blank's id; that is kept but was not the cause.
+- **Leaving Free Mode without saving logged nothing**: `modeChanged` runs in
+  `mode`'s `didSet`, so `mode` is already `.app` when it calls
+  `handleSave`, whose `guard mode == .freeEdit` then skipped it. The board
+  still caught up (a separate `loadExternalText`), so only the log lost the
+  change. `handleSave(leavingFreeMode: true)` bypasses the guard for that call.
 - **Can't edit a subtask's note** (historical, before subtasks lost note
   support entirely — see "Two-level model" above): each subtask row had its
   own `.popover(item:)` *nested inside* the parent `TaskChip`/
@@ -625,6 +630,21 @@ interpreting it like a Free Mode save would invite an unasked LLM call.
 `NSDocument.fileModificationDate` is refreshed afterwards so Cocoa's own
 "modified by another application" prompt doesn't fire for a change already
 handled. Not verified against Cocoa's own revert behaviour in a live run.
+
+## Done move for tasks checked outside App Mode
+
+The delayed move to the "Done" section (`scheduleDoneMoveIfNeeded`) used to
+be scheduled only from App Mode's toggle, so a task ticked in another app
+(picked up by `checkForExternalChange`) or typed `[x]` in Free Mode stayed in
+its column. `scheduleDoneMovesForNewlyCompleted(since:)` now runs after an
+external reload and on leaving Free Mode (against the tree as it was on
+entry, `documentBeforeFreeMode`), for tasks that were open before and are
+done now. That's not every done task in the file, so ones the user
+deliberately left done in another column are left alone. Not on a Free Mode
+save: the move would rewrite the text while the user is typing, and the
+delayed move itself now bails out if Free Mode is active when it fires.
+A task completed while the file wasn't open in Listo has no "before" and
+isn't moved.
 
 ## Outdent absorbing following siblings (opt-in)
 
