@@ -756,7 +756,7 @@ the end of a long column, ↑/↓ past the edge, a move landing out of sight.
 Anchor `nil` (scroll only as far as needed), deferred a runloop turn so a
 just-inserted row is laid out. Not run in the live GUI.
 
-## Menu bar quick-add (⌃⌥⌘T)
+## Menu bar quick-add (⌃⌥⌘T) and glance (⌃⌥⌘N)
 
 A menu bar icon plus a system-wide ⌃⌥⌘T open a small field that adds a task
 to the first column of the frontmost open document (`QuickAdd.swift`).
@@ -771,4 +771,20 @@ to the first column of the frontmost open document (`QuickAdd.swift`).
 - **Target document**: `DocumentController.live` (weak registry), matched
   against `NSApp.orderedWindows`' document URLs; falls back to any open one.
   Disabled with a message in Free Mode, with no document, or no columns.
+- **Preview**: under the field, the first 3 tasks of that first column in
+  board order (`displayTasks`, priority first; done ones included, dimmed),
+  plus "and N more". A snapshot taken when the panel opens — it closes on
+  add, so it never needs to update live.
+- **Three entry points, one panel** (`QuickAddMode`): ⌃⌥⌘T the field only,
+  ⌃⌥⌘N the preview only, the menu bar icon both. The same key again closes
+  it; the other key swaps the content. Each `GlobalHotKey` gets its own
+  Carbon id and its handler ignores the others' presses — every installed
+  handler sees every hot key the app registered.
+- **Follows the app's look.** The panel isn't a SwiftUI scene, so
+  `preferredColorScheme` doesn't reach it: `show` sets `panel.appearance`
+  from Settings ▸ Theme (`AppTheme.nsAppearance`, nil = follow macOS). The
+  preview reuses the board's pieces — `TaskCheckboxIcon`, `PriorityBadge`,
+  `TaskMetaBadges`, `SectionCountBadge`, `AppSettings.font`, the
+  first-column tint — with hit testing off so a tag chip can't filter the
+  board from the panel.
 - Not run in the live GUI.

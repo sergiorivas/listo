@@ -48,6 +48,8 @@ enum LocalizationTable {
         "quickAdd.freeMode": ["es": "Salí del Modo Libre para agregar tareas", "en": "Leave Free Mode to add tasks"],
         "quickAdd.noSections": ["es": "La lista no tiene columnas", "en": "The list has no columns"],
         "quickAdd.untitled": ["es": "Sin título", "en": "Untitled"],
+        "quickAdd.emptyColumn": ["es": "Todavía no hay tareas", "en": "No tasks yet"],
+        "quickAdd.more": ["es": "y %d más", "en": "and %d more"],
         "task.extendSelectionUp": ["es": "Ampliar selección hacia arriba", "en": "Extend selection up"],
         "task.extendSelectionDown": ["es": "Ampliar selección hacia abajo", "en": "Extend selection down"],
         "task.previous":["es": "Tarea anterior", "en": "Previous task"],

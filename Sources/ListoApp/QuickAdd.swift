@@ -10,18 +10,30 @@ final class GlobalHotKey {
     private var hotKeyRef: EventHotKeyRef?
     private var handlerRef: EventHandlerRef?
     private let action: () -> Void
+    private let hotKeyID: UInt32
+    private static var nextID: UInt32 = 1
 
     init?(keyCode: Int, modifiers: Int, action: @escaping () -> Void) {
         self.action = action
+        hotKeyID = Self.nextID
+        Self.nextID += 1
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        let installed = InstallEventHandler(GetApplicationEventTarget(), { _, _, userData in
-            guard let userData else { return OSStatus(eventNotHandledErr) }
+        // Every instance's handler sees every hot key the app registered, so
+        // each one only acts on its own id and passes the rest along.
+        let installed = InstallEventHandler(GetApplicationEventTarget(), { _, event, userData in
+            guard let userData, let event else { return OSStatus(eventNotHandledErr) }
             let hotKey = Unmanaged<GlobalHotKey>.fromOpaque(userData).takeUnretainedValue()
+            var pressed = EventHotKeyID()
+            let status = GetEventParameter(event, EventParamName(kEventParamDirectObject),
+                                           EventParamType(typeEventHotKeyID), nil,
+                                           MemoryLayout<EventHotKeyID>.size, nil, &pressed)
+            guard status == noErr, pressed.signature == GlobalHotKey.signature,
+                  pressed.id == hotKey.hotKeyID else { return OSStatus(eventNotHandledErr) }
             DispatchQueue.main.async { hotKey.action() }
             return noErr
         }, 1, &spec, Unmanaged.passUnretained(self).toOpaque(), &handlerRef)
         guard installed == noErr else { return nil }
-        let id = EventHotKeyID(signature: OSType(0x4C53_544F), id: 1) // "LSTO"
+        let id = EventHotKeyID(signature: Self.signature, id: hotKeyID)
         let registered = RegisterEventHotKey(UInt32(keyCode), UInt32(modifiers), id,
                                              GetApplicationEventTarget(), 0, &hotKeyRef)
         guard registered == noErr else {
@@ -30,15 +42,18 @@ final class GlobalHotKey {
         }
     }
 
+    private static let signature = OSType(0x4C53_544F) // "LSTO"
+
     deinit {
         if let hotKeyRef { UnregisterEventHotKey(hotKeyRef) }
         if let handlerRef { RemoveEventHandler(handlerRef) }
     }
 }
 
-/// The menu bar icon plus ⌃⌥⌘T: a small floating field that adds a task to
-/// the first column of the frontmost open document without bringing its
-/// window forward.
+/// The menu bar icon plus two system-wide keys, all on the first column of
+/// the frontmost open document, without bringing its window forward:
+/// ⌃⌥⌘T a field to add a task, ⌃⌥⌘N a glance at its top 3 tasks, and the
+/// menu bar icon both at once.
 ///
 /// A non-activating `NSPanel` rather than an `NSPopover`: a popover can only
 /// take typing if the app is activated, which would raise every Listo
@@ -49,8 +64,9 @@ final class QuickAddController: NSObject, NSWindowDelegate {
     static let shared = QuickAddController()
 
     private var statusItem: NSStatusItem?
-    private var hotKey: GlobalHotKey?
+    private var hotKeys: [GlobalHotKey] = []
     private var panel: QuickAddPanel?
+    private var shownMode: QuickAddMode?
 
     func install() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -60,30 +76,38 @@ final class QuickAddController: NSObject, NSWindowDelegate {
         item.button?.action = #selector(statusItemClicked)
         statusItem = item
 
-        hotKey = GlobalHotKey(keyCode: kVK_ANSI_T, modifiers: controlKey | optionKey | cmdKey) { [weak self] in
-            self?.toggle()
-        }
+        let modifiers = controlKey | optionKey | cmdKey
+        hotKeys = [
+            GlobalHotKey(keyCode: kVK_ANSI_T, modifiers: modifiers) { [weak self] in self?.toggle(.add) },
+            GlobalHotKey(keyCode: kVK_ANSI_N, modifiers: modifiers) { [weak self] in self?.toggle(.preview) },
+        ].compactMap { $0 }
     }
 
-    @objc private func statusItemClicked() { toggle() }
+    @objc private func statusItemClicked() { toggle(.addWithPreview) }
 
-    func toggle() {
-        if let panel, panel.isVisible {
+    /// The same key again closes the panel; another one swaps its content.
+    func toggle(_ mode: QuickAddMode) {
+        if let panel, panel.isVisible, shownMode == mode {
             close()
         } else {
-            show()
+            show(mode)
         }
     }
 
-    private func show() {
+    private func show(_ mode: QuickAddMode) {
         let panel = self.panel ?? makePanel()
         self.panel = panel
+        shownMode = mode
         // A fresh root view each time: empty field, focus claimed in
         // `onAppear`, target document looked up anew.
         let host = NSHostingView(rootView: QuickAddView(
             target: Self.targetController(),
+            mode: mode,
             onDone: { [weak self] in self?.close() }
         ))
+        // The panel isn't one of the SwiftUI scenes `preferredColorScheme`
+        // reaches, so it takes Settings ▸ Theme directly (nil = follow macOS).
+        panel.appearance = AppSettings.shared.theme.nsAppearance
         panel.contentView = host
         panel.setContentSize(host.fittingSize)
         position(panel)
@@ -91,6 +115,7 @@ final class QuickAddController: NSObject, NSWindowDelegate {
     }
 
     private func close() {
+        shownMode = nil
         panel?.orderOut(nil)
         panel?.contentView = nil
     }
@@ -149,41 +174,66 @@ private final class QuickAddPanel: NSPanel {
     override func cancelOperation(_ sender: Any?) { orderOut(nil) }
 }
 
+enum QuickAddMode {
+    case add, preview, addWithPreview
+    var showsField: Bool { self != .preview }
+    var showsPreview: Bool { self != .add }
+}
+
 private struct QuickAddView: View {
     let target: DocumentController?
+    let mode: QuickAddMode
     let onDone: () -> Void
+    @ObservedObject private var settings = AppSettings.shared
     @State private var text = ""
     @FocusState private var focused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: "plus.circle.fill")
-                    .foregroundStyle(Color.accentColor)
-                    .font(.title3)
-                TextField(L("quickAdd.placeholder", "Nueva tarea"), text: $text)
-                    .textFieldStyle(.plain)
-                    .font(.title3)
-                    .focused($focused)
-                    .focusEffectDisabled()
-                    .onSubmit(add)
-                    .disabled(problem != nil)
+        VStack(alignment: .leading, spacing: 10) {
+            if mode.showsField {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus.circle.fill")
+                        .foregroundStyle(problem == nil ? Color.accentColor : .secondary)
+                        .font(settings.font(.title3))
+                    TextField(L("quickAdd.placeholder", "Nueva tarea"), text: $text)
+                        .textFieldStyle(.plain)
+                        .font(settings.font(.title3))
+                        .focused($focused)
+                        .focusEffectDisabled()
+                        .onSubmit(add)
+                        .disabled(problem != nil)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.06)))
             }
-            Text(caption)
-                .font(.caption)
-                .foregroundStyle(problem == nil ? .secondary : Color.orange)
-                .lineLimit(1)
-                .truncationMode(.middle)
+            if let problem {
+                Label(problem, systemImage: "exclamationmark.triangle.fill")
+                    .font(settings.font(.caption))
+                    .foregroundStyle(Color.orange)
+                    .lineLimit(1)
+            } else if let target, let section = target.document.sections.first {
+                if mode.showsPreview {
+                    QuickAddPreview(controller: target, section: section, documentName: documentName)
+                } else {
+                    Text("\(documentName) › \(section.title)")
+                        .font(settings.font(.caption))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .padding(.horizontal, 2)
+                }
+            }
         }
-        .padding(14)
-        .frame(width: 360)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.1)))
+        .padding(12)
+        .frame(width: 380)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.primary.opacity(0.12)))
         .onExitCommand(perform: onDone)
-        .onAppear { DispatchQueue.main.async { focused = true } }
+        .onAppear { if mode.showsField { DispatchQueue.main.async { focused = true } } }
     }
 
-    /// Why the field can't be used right now, if it can't.
+    /// Why the panel can't be used right now, if it can't.
     private var problem: String? {
         guard let target else { return L("quickAdd.noDocument", "No hay ninguna lista abierta") }
         if target.mode != .app { return L("quickAdd.freeMode", "Salí del Modo Libre para agregar tareas") }
@@ -191,11 +241,8 @@ private struct QuickAddView: View {
         return nil
     }
 
-    private var caption: String {
-        if let problem { return problem }
-        guard let target, let section = target.document.sections.first else { return "" }
-        let name = target.fileURL?.deletingPathExtension().lastPathComponent ?? L("quickAdd.untitled", "Sin título")
-        return "\(name) › \(section.title)"
+    private var documentName: String {
+        target?.fileURL?.deletingPathExtension().lastPathComponent ?? L("quickAdd.untitled", "Sin título")
     }
 
     private func add() {
@@ -203,5 +250,84 @@ private struct QuickAddView: View {
         guard problem == nil, !title.isEmpty, let target, let section = target.document.sections.first else { return }
         target.addTask(text: title, toSectionID: section.id)
         onDone()
+    }
+}
+
+/// The first few tasks of the target column, in the order the board shows
+/// them (priority first), drawn with the board's own pieces (checkbox,
+/// priority, due/tag badges, count badge, first-column tint) so it reads as
+/// a slice of the column. Display only: nothing in it is clickable.
+private struct QuickAddPreview: View {
+    static let limit = 3
+    @ObservedObject var controller: DocumentController
+    @ObservedObject private var settings = AppSettings.shared
+    let section: ListoSection
+    let documentName: String
+
+    var body: some View {
+        let tasks = section.displayTasks
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(section.title)
+                    .font(settings.font(.headline, weight: .semibold))
+                    .lineLimit(1)
+                SectionCountBadge(count: section.taskCount)
+                Spacer(minLength: 8)
+                Text(documentName)
+                    .font(settings.font(.caption))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            if tasks.isEmpty {
+                Text(L("quickAdd.emptyColumn", "Todavía no hay tareas"))
+                    .font(settings.font(.body))
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 4)
+            } else {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(tasks.prefix(Self.limit)) { task in
+                        row(task)
+                    }
+                }
+                if tasks.count > Self.limit {
+                    Text(String(format: L("quickAdd.more", "y %d más"), tasks.count - Self.limit))
+                        .font(settings.font(.caption))
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 8)
+                }
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 10).fill(columnTint))
+        .allowsHitTesting(false)
+    }
+
+    private func row(_ task: ListoTask) -> some View {
+        let done = task.state == .done
+        return HStack(spacing: 6) {
+            TaskCheckboxIcon(isDone: done)
+                .font(settings.font(.body))
+            Text(task.displayTitle.isEmpty ? task.text : task.displayTitle)
+                .font(settings.font(.body))
+                .strikethrough(done)
+                .foregroundStyle(done ? .secondary : .primary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            PriorityBadge(priority: task.priority, dimmed: done)
+            TaskMetaBadges(controller: controller, task: task)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.05)))
+    }
+
+    /// The board's first-column colour when that setting is on, else a
+    /// neutral fill that works on both themes.
+    private var columnTint: Color {
+        settings.firstSectionBackgroundEnabled
+            ? settings.firstSectionBackgroundColor.opacity(0.18)
+            : Color.primary.opacity(0.04)
     }
 }
