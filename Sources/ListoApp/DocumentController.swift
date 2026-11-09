@@ -33,7 +33,7 @@ final class DocumentController: ObservableObject {
     /// quick-add (`QuickAddController`), which lives outside any window.
     static let live = NSHashTable<DocumentController>.weakObjects()
 
-    @Published internal(set) var document: ListoDocument
+    @Published var document: ListoDocument
     @Published var mode: EditMode = .app {
         didSet { modeChanged(from: oldValue) }
     }
@@ -58,7 +58,7 @@ final class DocumentController: ObservableObject {
     /// Every selected task when ⇧↑/⇧↓ extended the selection past one row
     /// (cursor and anchor included); empty for a plain single selection.
     /// All of one level: tasks only, or subtasks only.
-    @Published internal(set) var multiSelectedIDs: Set<UUID> = []
+    @Published var multiSelectedIDs: Set<UUID> = []
     var selectionAnchorID: UUID?
     var keepsMultiSelection = false
     /// The task whose title is currently a live text field, à la Workflowy —
