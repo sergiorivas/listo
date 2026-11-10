@@ -756,10 +756,12 @@ the end of a long column, ↑/↓ past the edge, a move landing out of sight.
 Anchor `nil` (scroll only as far as needed), deferred a runloop turn so a
 just-inserted row is laid out. Not run in the live GUI.
 
-## Menu bar quick-add (⌃⌥⌘T) and glance (⌃⌥⌘N)
+## Menu bar quick-add (⌃⌥⌘T, configurable)
 
-A menu bar icon plus a system-wide ⌃⌥⌘T open a small field that adds a task
-to the first column of the frontmost open document (`QuickAdd.swift`).
+A menu bar icon plus one system-wide shortcut (⌃⌥⌘T by default) open the same
+small panel on the first column of the frontmost open document
+(`QuickAdd.swift`): its top 3 tasks and a focused field to add one. Esc, a
+click elsewhere, or the shortcut again close it without adding.
 
 - **Carbon `RegisterEventHotKey`**, not an `NSEvent` global monitor: no
   Accessibility permission, and the keystroke isn't also delivered to the
@@ -771,15 +773,30 @@ to the first column of the frontmost open document (`QuickAdd.swift`).
 - **Target document**: `DocumentController.live` (weak registry), matched
   against `NSApp.orderedWindows`' document URLs; falls back to any open one.
   Disabled with a message in Free Mode, with no document, or no columns.
-- **Preview**: under the field, the first 3 tasks of that first column in
-  board order (`displayTasks`, priority first; done ones included, dimmed),
-  plus "and N more". A snapshot taken when the panel opens — it closes on
-  add, so it never needs to update live.
-- **Three entry points, one panel** (`QuickAddMode`): ⌃⌥⌘T the field only,
-  ⌃⌥⌘N the preview only, the menu bar icon both. The same key again closes
-  it; the other key swaps the content. Each `GlobalHotKey` gets its own
-  Carbon id and its handler ignores the others' presses — every installed
-  handler sees every hot key the app registered.
+- **Preview**: the first 3 tasks of that first column in board order
+  (`displayTasks`, priority first; done ones included, dimmed), plus "and N
+  more". A snapshot taken when the panel opens — it closes on add, so it
+  never needs to update live.
+- **One entry point, not three.** An earlier version had ⌃⌥⌘T (field only),
+  ⌃⌥⌘N (preview only) and the icon (both); collapsed at explicit request
+  into one panel that always shows both.
+- **Shortcut in Settings ▸ Menu bar** (`AppSettings.quickAddShortcut`,
+  `HotKeyShortcut` = Carbon key code + modifier bits, two UserDefaults
+  ints). `HotKeyRecorder`: click, press a combination; it must include ⌘, ⌥
+  or ⌃ (else a beep), Esc cancels. The hot key is unregistered while
+  recording — Carbon catches it before any local monitor, so the current
+  combination would otherwise open the panel. `QuickAddController`
+  re-registers on every change; if registration fails (another app owns the
+  combination) `hotKeyUnavailable` shows a warning in Settings. The key's
+  label comes from the current keyboard layout (`UCKeyTranslate`).
+- **Animated like a menu opening.** The window drops 10pt from under the
+  menu bar while fading in (`NSAnimationContext`, 0.2s), and fades/rises out
+  on close (0.14s) — Esc, click-away, the shortcut and an add all go through
+  `close()`. A generation counter keeps a fade-out finishing late from
+  hiding a panel reopened mid-fade; the shortcut during a fade-out reopens.
+  The content settles from 0.97 scale (`Motion.panelSpring`) and the preview
+  rows cascade in. On Return the `+` swaps to a green bouncing check for
+  0.4s before closing. All of it is off under Reduce Motion.
 - **Follows the app's look.** The panel isn't a SwiftUI scene, so
   `preferredColorScheme` doesn't reach it: `show` sets `panel.appearance`
   from Settings ▸ Theme (`AppTheme.nsAppearance`, nil = follow macOS). The

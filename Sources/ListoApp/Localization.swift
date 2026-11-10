@@ -245,6 +245,15 @@ final class AppSettings: ObservableObject {
             reloadToken &+= 1
         }
     }
+    /// The system-wide key that opens the menu bar quick-add panel — see
+    /// `QuickAddController`. ⌃⌥⌘T by default.
+    @Published var quickAddShortcut: HotKeyShortcut {
+        didSet {
+            UserDefaults.standard.set(quickAddShortcut.keyCode, forKey: Keys.quickAddKeyCode)
+            UserDefaults.standard.set(quickAddShortcut.modifiers, forKey: Keys.quickAddModifiers)
+            reloadToken &+= 1
+        }
+    }
     /// Bumped on every change above; views apply `.id(settings.reloadToken)`
     /// to force a full re-render (including their `L(...)` calls) without
     /// having to thread `@ObservedObject` reads through every leaf view.
@@ -264,6 +273,8 @@ final class AppSettings: ObservableObject {
         static let firstSectionBackgroundColor = "listo.settings.firstSectionBackgroundColor"
         static let lastSectionBackgroundEnabled = "listo.settings.lastSectionBackgroundEnabled"
         static let lastSectionBackgroundColor = "listo.settings.lastSectionBackgroundColor"
+        static let quickAddKeyCode = "listo.settings.quickAddKeyCode"
+        static let quickAddModifiers = "listo.settings.quickAddModifiers"
     }
 
     private init() {
@@ -287,6 +298,13 @@ final class AppSettings: ObservableObject {
         lastSectionBackgroundEnabled = defaults.object(forKey: Keys.lastSectionBackgroundEnabled) as? Bool ?? true
         lastSectionBackgroundColor = defaults.string(forKey: Keys.lastSectionBackgroundColor)
             .flatMap(Color.init(hex:)) ?? Self.defaultLastSectionBackground
+        if let keyCode = defaults.object(forKey: Keys.quickAddKeyCode) as? Int,
+           let modifiers = defaults.object(forKey: Keys.quickAddModifiers) as? Int,
+           HotKeyShortcut(keyCode: keyCode, modifiers: modifiers).isValid {
+            quickAddShortcut = HotKeyShortcut(keyCode: keyCode, modifiers: modifiers)
+        } else {
+            quickAddShortcut = .defaultQuickAdd
+        }
     }
 
     func resetSectionBackgrounds() {

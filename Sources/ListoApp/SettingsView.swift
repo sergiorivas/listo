@@ -6,6 +6,7 @@ import ListoEngine
 /// tu propio LLM" API key. Everything here updates live; no relaunch needed.
 struct SettingsView: View {
     @ObservedObject private var settings = AppSettings.shared
+    @ObservedObject private var quickAdd = QuickAddController.shared
     @State private var apiKey: String = ""
     @State private var savedRecently = false
 
@@ -148,6 +149,39 @@ struct SettingsView: View {
                 .fixedSize(horizontal: false, vertical: true)
             } header: {
                 Label(L("settings.section.behavior", "Comportamiento"), systemImage: "checkmark.circle")
+            }
+
+            Section {
+                LabeledContent(L("settings.hotKey", "Atajo global")) {
+                    HStack(spacing: 8) {
+                        if settings.quickAddShortcut != .defaultQuickAdd {
+                            Button(L("settings.fontSize.reset", "Restablecer")) {
+                                settings.quickAddShortcut = .defaultQuickAdd
+                            }
+                            .controlSize(.small)
+                        }
+                        HotKeyRecorder(shortcut: $settings.quickAddShortcut)
+                    }
+                }
+
+                if quickAdd.hotKeyUnavailable {
+                    Label(
+                        L("settings.hotKey.unavailable", "Esta combinación ya la usa otra app. Elegí otra."),
+                        systemImage: "exclamationmark.triangle.fill"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(Color.orange)
+                }
+
+                Text(L(
+                    "settings.hotKey.hint",
+                    "Abre el panel de la barra de menús desde cualquier app: las 3 primeras tareas de la primera columna y un campo para agregar una. Hacé clic en el atajo y presioná la nueva combinación (con ⌘, ⌥ o ⌃); Esc cancela."
+                ))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            } header: {
+                Label(L("settings.section.quickAdd", "Barra de menús"), systemImage: "menubar.rectangle")
             }
 
             Section {

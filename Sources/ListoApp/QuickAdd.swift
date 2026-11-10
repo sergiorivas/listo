@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 import Carbon.HIToolbox
 import ListoEngine
 
@@ -50,59 +51,79 @@ final class GlobalHotKey {
     }
 }
 
-/// The menu bar icon plus two system-wide keys, all on the first column of
-/// the frontmost open document, without bringing its window forward:
-/// ⌃⌥⌘T a field to add a task, ⌃⌥⌘N a glance at its top 3 tasks, and the
-/// menu bar icon both at once.
+/// The menu bar icon and one system-wide key (⌃⌥⌘T by default, set in
+/// Settings) open the same panel on the first column of the frontmost open
+/// document, without bringing its window forward: its top 3 tasks plus a
+/// focused field to add one. Esc, a click elsewhere or the key again close it.
 ///
 /// A non-activating `NSPanel` rather than an `NSPopover`: a popover can only
 /// take typing if the app is activated, which would raise every Listo
 /// window over whatever the user was doing. The panel takes key focus while
 /// Listo stays in the background, like Spotlight.
 @MainActor
-final class QuickAddController: NSObject, NSWindowDelegate {
+final class QuickAddController: NSObject, NSWindowDelegate, ObservableObject {
     static let shared = QuickAddController()
 
     private var statusItem: NSStatusItem?
-    private var hotKeys: [GlobalHotKey] = []
+    private var hotKey: GlobalHotKey?
     private var panel: QuickAddPanel?
-    private var shownMode: QuickAddMode?
+    private var shortcutObserver: AnyCancellable?
+    /// Set when the configured shortcut couldn't be registered (usually
+    /// because another app already owns it); Settings shows a warning.
+    @Published private(set) var hotKeyUnavailable = false
 
     func install() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.image = NSImage(systemSymbolName: "checklist", accessibilityDescription: "Listo")
-        item.button?.toolTip = L("quickAdd.tooltip", "Agregar tarea (⌃⌥⌘T)")
         item.button?.target = self
         item.button?.action = #selector(statusItemClicked)
         statusItem = item
 
-        let modifiers = controlKey | optionKey | cmdKey
-        hotKeys = [
-            GlobalHotKey(keyCode: kVK_ANSI_T, modifiers: modifiers) { [weak self] in self?.toggle(.add) },
-            GlobalHotKey(keyCode: kVK_ANSI_N, modifiers: modifiers) { [weak self] in self?.toggle(.preview) },
-        ].compactMap { $0 }
+        // `$quickAddShortcut` emits the current value at once, then each change.
+        shortcutObserver = AppSettings.shared.$quickAddShortcut
+            .removeDuplicates()
+            .sink { [weak self] in self?.register($0) }
     }
 
-    @objc private func statusItemClicked() { toggle(.addWithPreview) }
-
-    /// The same key again closes the panel; another one swaps its content.
-    func toggle(_ mode: QuickAddMode) {
-        if let panel, panel.isVisible, shownMode == mode {
-            close()
-        } else {
-            show(mode)
+    private func register(_ shortcut: HotKeyShortcut) {
+        hotKey = nil // unregister the old one before claiming the new one
+        hotKey = GlobalHotKey(keyCode: shortcut.keyCode, modifiers: shortcut.modifiers) { [weak self] in
+            self?.toggle()
         }
+        hotKeyUnavailable = hotKey == nil
+        statusItem?.button?.toolTip = "\(L("quickAdd.tooltip", "Agregar tarea")) (\(shortcut.displayString))"
     }
 
-    private func show(_ mode: QuickAddMode) {
+    /// While Settings records a new shortcut, so pressing the current one
+    /// reaches the recorder instead of opening the panel.
+    func suspendHotKey() { hotKey = nil }
+    func resumeHotKey() { register(AppSettings.shared.quickAddShortcut) }
+
+    @objc private func statusItemClicked() { toggle() }
+
+    /// Bumped on every show/close so a fade-out that finishes after the
+    /// panel was reopened doesn't order it out.
+    private var transitionGeneration = 0
+    private var isClosing = false
+
+    /// How far the panel drops from the menu bar as it fades in.
+    private static let slideDistance: CGFloat = 10
+
+    /// The key (or icon) again closes the panel; during its fade-out it
+    /// reopens it instead.
+    func toggle() {
+        if let panel, panel.isVisible, !isClosing { close() } else { show() }
+    }
+
+    private func show() {
         let panel = self.panel ?? makePanel()
         self.panel = panel
-        shownMode = mode
+        transitionGeneration += 1
+        isClosing = false
         // A fresh root view each time: empty field, focus claimed in
         // `onAppear`, target document looked up anew.
         let host = NSHostingView(rootView: QuickAddView(
             target: Self.targetController(),
-            mode: mode,
             onDone: { [weak self] in self?.close() }
         ))
         // The panel isn't one of the SwiftUI scenes `preferredColorScheme`
@@ -111,13 +132,44 @@ final class QuickAddController: NSObject, NSWindowDelegate {
         panel.contentView = host
         panel.setContentSize(host.fittingSize)
         position(panel)
+        guard !Motion.reduceMotion else {
+            panel.alphaValue = 1
+            panel.makeKeyAndOrderFront(nil)
+            return
+        }
+        // Drops in from just under the menu bar, like a menu opening.
+        let resting = panel.frame.origin
+        panel.alphaValue = 0
+        panel.setFrameOrigin(NSPoint(x: resting.x, y: resting.y + Self.slideDistance))
         panel.makeKeyAndOrderFront(nil)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.2
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().alphaValue = 1
+            panel.animator().setFrameOrigin(resting)
+        }
     }
 
-    private func close() {
-        shownMode = nil
-        panel?.orderOut(nil)
-        panel?.contentView = nil
+    func close() {
+        guard let panel, panel.isVisible, !isClosing else { return }
+        transitionGeneration += 1
+        let generation = transitionGeneration
+        isClosing = true
+        let finish = { [weak self] in
+            guard let self, self.transitionGeneration == generation else { return }
+            self.isClosing = false
+            panel.orderOut(nil)
+            panel.contentView = nil
+            panel.alphaValue = 1
+        }
+        guard !Motion.reduceMotion else { return finish() }
+        let origin = panel.frame.origin
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.14
+            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            panel.animator().alphaValue = 0
+            panel.animator().setFrameOrigin(NSPoint(x: origin.x, y: origin.y + Self.slideDistance / 2))
+        }, completionHandler: { MainActor.assumeIsolated { finish() } })
     }
 
     private func makePanel() -> QuickAddPanel {
@@ -171,66 +223,60 @@ final class QuickAddController: NSObject, NSWindowDelegate {
 
 private final class QuickAddPanel: NSPanel {
     override var canBecomeKey: Bool { true }
-    override func cancelOperation(_ sender: Any?) { orderOut(nil) }
-}
-
-enum QuickAddMode {
-    case add, preview, addWithPreview
-    var showsField: Bool { self != .preview }
-    var showsPreview: Bool { self != .add }
+    override func cancelOperation(_ sender: Any?) {
+        MainActor.assumeIsolated { QuickAddController.shared.close() }
+    }
 }
 
 private struct QuickAddView: View {
     let target: DocumentController?
-    let mode: QuickAddMode
     let onDone: () -> Void
     @ObservedObject private var settings = AppSettings.shared
     @State private var text = ""
+    @State private var added = false
+    @State private var appeared = false
     @FocusState private var focused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if mode.showsField {
-                HStack(spacing: 8) {
-                    Image(systemName: "plus.circle.fill")
-                        .foregroundStyle(problem == nil ? Color.accentColor : .secondary)
-                        .font(settings.font(.title3))
-                    TextField(L("quickAdd.placeholder", "Nueva tarea"), text: $text)
-                        .textFieldStyle(.plain)
-                        .font(settings.font(.title3))
-                        .focused($focused)
-                        .focusEffectDisabled()
-                        .onSubmit(add)
-                        .disabled(problem != nil)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.06)))
+            HStack(spacing: 8) {
+                // Turns into a green check for a beat after Return, before
+                // the panel closes, so the add reads as done.
+                Image(systemName: added ? "checkmark.circle.fill" : "plus.circle.fill")
+                    .foregroundStyle(added ? Color.green : problem == nil ? Color.accentColor : .secondary)
+                    .font(settings.font(.title3))
+                    .contentTransition(.symbolEffect(.replace))
+                    .symbolEffect(.bounce, value: added)
+                TextField(L("quickAdd.placeholder", "Nueva tarea"), text: $text)
+                    .textFieldStyle(.plain)
+                    .font(settings.font(.title3))
+                    .focused($focused)
+                    .focusEffectDisabled()
+                    .onSubmit(add)
+                    .disabled(problem != nil || added)
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.06)))
             if let problem {
                 Label(problem, systemImage: "exclamationmark.triangle.fill")
                     .font(settings.font(.caption))
                     .foregroundStyle(Color.orange)
                     .lineLimit(1)
             } else if let target, let section = target.document.sections.first {
-                if mode.showsPreview {
-                    QuickAddPreview(controller: target, section: section, documentName: documentName)
-                } else {
-                    Text("\(documentName) › \(section.title)")
-                        .font(settings.font(.caption))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .padding(.horizontal, 2)
-                }
+                QuickAddPreview(controller: target, section: section, documentName: documentName)
             }
         }
         .padding(12)
+        .scaleEffect(appeared ? 1 : 0.97, anchor: .top)
         .frame(width: 380)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.primary.opacity(0.12)))
         .onExitCommand(perform: onDone)
-        .onAppear { if mode.showsField { DispatchQueue.main.async { focused = true } } }
+        .onAppear {
+            withAnimation(Motion.panelSpring) { appeared = true }
+            DispatchQueue.main.async { focused = true }
+        }
     }
 
     /// Why the panel can't be used right now, if it can't.
@@ -249,7 +295,9 @@ private struct QuickAddView: View {
         let title = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard problem == nil, !title.isEmpty, let target, let section = target.document.sections.first else { return }
         target.addTask(text: title, toSectionID: section.id)
-        onDone()
+        guard !Motion.reduceMotion else { return onDone() }
+        withAnimation(Motion.quick) { added = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: onDone)
     }
 }
 
@@ -263,6 +311,7 @@ private struct QuickAddPreview: View {
     @ObservedObject private var settings = AppSettings.shared
     let section: ListoSection
     let documentName: String
+    @State private var appeared = Motion.reduceMotion
 
     var body: some View {
         let tasks = section.displayTasks
@@ -286,8 +335,11 @@ private struct QuickAddPreview: View {
                     .padding(.vertical, 4)
             } else {
                 VStack(alignment: .leading, spacing: 2) {
-                    ForEach(tasks.prefix(Self.limit)) { task in
+                    ForEach(Array(tasks.prefix(Self.limit).enumerated()), id: \.element.id) { index, task in
                         row(task)
+                            .opacity(appeared ? 1 : 0)
+                            .offset(y: appeared ? 0 : -6)
+                            .animation(Motion.panelSpring?.delay(0.05 + Double(index) * 0.04), value: appeared)
                     }
                 }
                 if tasks.count > Self.limit {
@@ -301,6 +353,7 @@ private struct QuickAddPreview: View {
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 10).fill(columnTint))
         .allowsHitTesting(false)
+        .onAppear { appeared = true }
     }
 
     private func row(_ task: ListoTask) -> some View {

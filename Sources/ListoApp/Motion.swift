@@ -23,6 +23,8 @@ enum Motion {
     static var selection: Animation? { reduceMotion ? nil : .easeInOut(duration: 0.12) }
     /// The cursor highlight gliding from one row to the next.
     static var selectionGlide: Animation? { reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.82) }
+    /// The menu bar quick-add panel settling in, and its rows cascading.
+    static var panelSpring: Animation? { reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.8) }
     /// The fade-out at the end of a `RowHighlight` flash.
     static var flashFade: Animation? { reduceMotion ? nil : .easeOut(duration: 0.5) }
 
