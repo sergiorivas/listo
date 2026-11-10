@@ -727,6 +727,12 @@ under XCTest.
   `clipShape` — the highlight is a rounded shape itself, since a clip would
   hide it mid-flight. Kanban columns still clip, so a glide across columns
   cuts out at the column edge. Not run in the live GUI.
+- **Selecting a row pops it.** When a row becomes the cursor (click, ↑/↓,
+  ⇧↑/⇧↓) it swells to 1.035× and its highlight brightens, then both spring
+  back (`SelectionPop` in `RowHighlight`). It fires on a *change* to
+  `isCursor` only, so a row that appears already selected (a rename's new
+  id, a Return-chained blank) doesn't pop. Off under Reduce Motion. Not run
+  in the live GUI.
 
 ## Space to check/uncheck
 

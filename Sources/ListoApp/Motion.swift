@@ -102,6 +102,48 @@ struct RowHighlight: ViewModifier {
                     .allowsHitTesting(false)
                     .animation(Motion.quick, value: isFlashing)
             }
+            .modifier(SelectionPop(trigger: selectionCount))
+            .onChange(of: isCursor) { _, isNow in
+                if isNow, !Motion.reduceMotion { selectionCount += 1 }
+            }
+    }
+
+    /// Bumped each time this row becomes the cursor; drives `SelectionPop`.
+    /// Only a *change* to `isCursor` counts — a row that appears already
+    /// selected (a rename's new id, a Return-chained blank) doesn't pop.
+    @State private var selectionCount = 0
+}
+
+/// The "inflate and light up" when a row becomes the selection: the row
+/// swells slightly and its highlight brightens, then both spring back to
+/// the resting selection. Runs alongside the highlight's glide.
+private struct SelectionPop: ViewModifier {
+    let trigger: Int
+
+    private struct Frame {
+        var scale: CGFloat = 1
+        var glow: Double = 0
+    }
+
+    func body(content: Content) -> some View {
+        content.keyframeAnimator(initialValue: Frame(), trigger: trigger) { view, frame in
+            view
+                .overlay {
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(Color.accentColor.opacity(frame.glow))
+                        .allowsHitTesting(false)
+                }
+                .scaleEffect(frame.scale)
+        } keyframes: { _ in
+            KeyframeTrack(\.scale) {
+                CubicKeyframe(1.035, duration: 0.11)
+                SpringKeyframe(1, duration: 0.4, spring: .bouncy)
+            }
+            KeyframeTrack(\.glow) {
+                CubicKeyframe(0.2, duration: 0.11)
+                CubicKeyframe(0, duration: 0.45)
+            }
+        }
     }
 }
 
