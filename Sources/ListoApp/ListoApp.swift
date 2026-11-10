@@ -65,6 +65,29 @@ private struct TaskCommands: Commands {
         controller?.editingTaskID != nil && controller?.editingTaskID == controller?.selectedTaskID
     }
 
+    /// ↑/↓. With nothing selected the command also runs while a text field
+    /// has focus, which needs care: the toolbar search field takes focus as
+    /// soon as the window opens, so at launch ↑/↓ would otherwise go into
+    /// it and the board would never get them. From the search field they
+    /// enter the board (as in Mail/Things) and the field lets go of focus,
+    /// so Space and the other bare-key commands then reach the selection.
+    /// Any other text field (a section title being renamed) keeps its own
+    /// arrow.
+    private func navigate(direction: Int, fieldCommand: Selector) {
+        guard let controller else { return }
+        let window = NSApp.keyWindow
+        if controller.selectedTaskID == nil, let field = window?.firstResponder as? NSTextView {
+            guard field.delegate is NSSearchField else {
+                field.doCommand(by: fieldCommand)
+                return
+            }
+            controller.selectAdjacent(direction: direction, keepEditing: false)
+            if controller.selectedTaskID != nil { window?.makeFirstResponder(nil) }
+            return
+        }
+        controller.selectAdjacent(direction: direction, keepEditing: false)
+    }
+
     var body: some Commands {
         CommandMenu(L("menu.task", "Tarea")) {
             Button(L("task.new", "Nueva tarea")) {
@@ -169,29 +192,13 @@ private struct TaskCommands: Commands {
             Divider()
 
             Button(L("task.previous", "Tarea anterior")) {
-                // With nothing selected the command also runs while some
-                // other text field (the filter search) has focus — give it
-                // its arrow back instead of grabbing the board.
-                if controller?.selectedTaskID == nil,
-                   let field = NSApp.keyWindow?.firstResponder as? NSTextView {
-                    field.moveUp(nil)
-                } else {
-                    controller?.selectAdjacent(direction: -1, keepEditing: false)
-                }
+                navigate(direction: -1, fieldCommand: #selector(NSResponder.moveUp(_:)))
             }
             .keyboardShortcut(.upArrow, modifiers: [])
             .disabled(controller?.mode != .app || isEditingSelectedTask)
 
             Button(L("task.next", "Tarea siguiente")) {
-                // With nothing selected the command also runs while some
-                // other text field (the filter search) has focus — give it
-                // its arrow back instead of grabbing the board.
-                if controller?.selectedTaskID == nil,
-                   let field = NSApp.keyWindow?.firstResponder as? NSTextView {
-                    field.moveDown(nil)
-                } else {
-                    controller?.selectAdjacent(direction: 1, keepEditing: false)
-                }
+                navigate(direction: 1, fieldCommand: #selector(NSResponder.moveDown(_:)))
             }
             .keyboardShortcut(.downArrow, modifiers: [])
             .disabled(controller?.mode != .app || isEditingSelectedTask)

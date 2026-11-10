@@ -402,9 +402,14 @@ of the Outline, or the last task of the last column in Kanban. Filtered rows,
 folded Outline sections and collapsed Kanban columns are skipped. Before this,
 the ↑/↓ menu commands were disabled with no selection, so the key went to
 macOS's focus loop: ↓ happened to land on the first row, and ↑ on the last row
-of the first column. The commands now stay enabled, and when nothing is
-selected they hand the arrow back to a focused text field (the filter search)
-the same way Space does. Not run in the live GUI.
+of the first column. The commands now stay enabled. A first attempt handed
+the arrow to whatever text field had focus when nothing was selected, which
+broke the launch case it was meant to fix: the toolbar `.searchable` field
+takes focus when the window opens, so every arrow went into it. Now ↑/↓ from
+the search field enter the board and resign the field (so Space etc. reach
+the selection afterwards); only other text fields (a section title being
+renamed) keep their arrow. The search-field-has-focus explanation is
+inferred, not observed in a live run.
 
 ## Window: adjusted initial width and centered columns
 
