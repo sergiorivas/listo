@@ -98,6 +98,7 @@ struct ContentView: View {
             }
         }
         .searchable(text: $controller.filter.query, placement: .toolbar, prompt: L("search.prompt", "Buscar tareas"))
+        .background(InitialFocusGuard())
         .overlay {
             if controller.mode == .app, controller.filter.isActive,
                controller.filter.displayOrder(in: controller.document).isEmpty {
@@ -157,5 +158,53 @@ struct ContentView: View {
         guard controller.mode == .app, controller.viewStyle == .kanban else { return 760 }
         let width = KanbanView.idealContentWidth(controller: controller)
         return min(width, 1400)
+    }
+}
+
+/// Stops AppKit from dropping the keyboard into a text field when the window
+/// first opens. On first becoming key, a window focuses its first editable
+/// field — here the first column's title (or the toolbar search) — so the
+/// title showed as selected and ↑/↓ went into it instead of the board. Once,
+/// right after that first activation, a focused field editor is resigned;
+/// later activations restore whatever the user had focused, untouched. A
+/// field claimed on purpose (`focusSectionID`, a task title being edited)
+/// at launch could lose it to the 0.3s re-check — only a column created in
+/// the first instant, so not handled.
+private struct InitialFocusGuard: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { GuardView() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    private final class GuardView: NSView {
+        private var observer: NSObjectProtocol?
+        private var done = false
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard !done, let window else { return }
+            if window.isKeyWindow {
+                clear(in: window)
+            } else if observer == nil {
+                observer = NotificationCenter.default.addObserver(
+                    forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main
+                ) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.clear(in: window) }
+                }
+            }
+        }
+
+        private func clear(in window: NSWindow) {
+            done = true
+            if let observer { NotificationCenter.default.removeObserver(observer) }
+            observer = nil
+            // Twice: SwiftUI can hand the field focus a little after AppKit's
+            // own initial pick, and a late one would otherwise win.
+            for delay in [0.0, 0.3] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    if let field = window.firstResponder as? NSTextView, field.isFieldEditor {
+                        window.makeFirstResponder(nil)
+                    }
+                }
+            }
+        }
     }
 }

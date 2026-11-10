@@ -408,8 +408,13 @@ broke the launch case it was meant to fix: the toolbar `.searchable` field
 takes focus when the window opens, so every arrow went into it. Now ↑/↓ from
 the search field enter the board and resign the field (so Space etc. reach
 the selection afterwards); only other text fields (a section title being
-renamed) keep their arrow. The search-field-has-focus explanation is
-inferred, not observed in a live run.
+renamed) keep their arrow. That still wasn't the real cause: at launch
+AppKit gives focus to the window's first editable field, which turned out to
+be the first column's title (shown selected), not the search field.
+`InitialFocusGuard` (ContentView) resigns a focused field editor right after
+the window first becomes key, and again 0.3s later in case SwiftUI hands
+focus over late; later activations are left alone so a rename in progress
+survives ⌘⇥. Not run in the live GUI.
 
 ## Window: adjusted initial width and centered columns
 
