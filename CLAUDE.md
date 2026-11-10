@@ -395,6 +395,17 @@ The first version of this relied almost entirely on a
 - `.contentShape(Rectangle())` was added so the whole row area (padding
   included, not just where there's text/icons) responds to clicks.
 
+## ↑/↓ with nothing selected
+
+↓ selects the board's first task, ↑ its last (`boardEdgeTaskID`): the bottom
+of the Outline, or the last task of the last column in Kanban. Filtered rows,
+folded Outline sections and collapsed Kanban columns are skipped. Before this,
+the ↑/↓ menu commands were disabled with no selection, so the key went to
+macOS's focus loop: ↓ happened to land on the first row, and ↑ on the last row
+of the first column. The commands now stay enabled, and when nothing is
+selected they hand the arrow back to a focused text field (the filter search)
+the same way Space does. Not run in the live GUI.
+
 ## Window: adjusted initial width and centered columns
 
 The window now opens exactly wide enough to show every Kanban column

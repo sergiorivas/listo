@@ -6,8 +6,9 @@ import ListoEngine
 extension DocumentController {
     /// Moves selection to the task immediately before (`direction: -1`) or
     /// after (`direction: +1`) the current selection — ↑/↓ arrow
-    /// navigation. A no-op if nothing's selected or the move would go past
-    /// either end, same as indent/outdent at their limits.
+    /// navigation. A no-op if the move would go past either end, same as
+    /// indent/outdent at their limits. With nothing selected, ↓ enters the
+    /// board at its first task and ↑ at its last (`boardEdgeTaskID`).
     ///
     /// Scoped to the current view style: Outline renders every section as
     /// one continuous vertical list, so navigation spans the whole
@@ -21,7 +22,11 @@ extension DocumentController {
     /// just the selection itself — mirrors how Return/Tab already keep you
     /// typing across the task they create or re-indent.
     func selectAdjacent(direction: Int, keepEditing: Bool) {
-        guard let currentID = selectedTaskID,
+        guard let currentID = selectedTaskID else {
+            if let edgeID = boardEdgeTaskID(last: direction < 0) { selectedTaskID = edgeID }
+            return
+        }
+        guard
               let newID = adjacentTaskID(to: currentID, direction: direction) else { return }
         if keepEditing, discardIfBlank(taskID: currentID) {
             // The delete can re-id the neighbor (content-derived ids) —
@@ -145,6 +150,23 @@ extension DocumentController {
 
     /// The task next to `taskID` in the current view style's navigation
     /// order (see `selectAdjacent`), or `nil` past either end.
+    /// The first (or last) task of the whole board as it's shown — the top
+    /// or bottom of the Outline, or the first task of the first column / last
+    /// task of the last column in Kanban. Skips what isn't visible: rows the
+    /// filter hides, folded Outline sections, collapsed Kanban columns.
+    func boardEdgeTaskID(last: Bool) -> UUID? {
+        let order: [ListoTask]
+        switch viewStyle {
+        case .outline:
+            order = filter.displayOrder(in: document, hiding: isOutlineSectionCollapsed)
+        case .kanban:
+            order = document.sections
+                .filter { !KanbanLayoutStore.shared.isCollapsed(documentKey: documentKey, sectionTitle: $0.title) }
+                .flatMap { filter.displayOrder(in: $0) }
+        }
+        return (last ? order.last : order.first)?.id
+    }
+
     func adjacentTaskID(to taskID: UUID, direction: Int) -> UUID? {
         guard let orderedIDs = navigationOrder(containing: taskID),
               let idx = orderedIDs.firstIndex(of: taskID) else { return nil }

@@ -153,6 +153,19 @@ final class DocumentControllerTests: XCTestCase {
         XCTAssertEqual(c.selectedTaskID, task(c, "B").id)
     }
 
+    func testArrowsWithNoSelectionEnterAtTheBoardEdges() {
+        let text = "# One\n\n- [ ] A\n- [ ] A2\n\n# Two\n\n- [ ] B\n- [ ] B2\n"
+        for style in [ViewStyle.kanban, .outline] {
+            let c = makeController(text)
+            c.viewStyle = style
+            c.selectAdjacent(direction: 1, keepEditing: false)
+            XCTAssertEqual(c.selectedTaskID, task(c, "A").id, "\(style)")
+            c.selectedTaskID = nil
+            c.selectAdjacent(direction: -1, keepEditing: false)
+            XCTAssertEqual(c.selectedTaskID, task(c, "B2").id, "\(style)")
+        }
+    }
+
     func testUndoRedoRoundTripsToggle() {
         let c = makeController(list)
         c.toggle(taskID: task(c, "A").id)

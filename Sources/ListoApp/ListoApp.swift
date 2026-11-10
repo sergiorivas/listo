@@ -169,16 +169,32 @@ private struct TaskCommands: Commands {
             Divider()
 
             Button(L("task.previous", "Tarea anterior")) {
-                controller?.selectAdjacent(direction: -1, keepEditing: false)
+                // With nothing selected the command also runs while some
+                // other text field (the filter search) has focus — give it
+                // its arrow back instead of grabbing the board.
+                if controller?.selectedTaskID == nil,
+                   let field = NSApp.keyWindow?.firstResponder as? NSTextView {
+                    field.moveUp(nil)
+                } else {
+                    controller?.selectAdjacent(direction: -1, keepEditing: false)
+                }
             }
             .keyboardShortcut(.upArrow, modifiers: [])
-            .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
+            .disabled(controller?.mode != .app || isEditingSelectedTask)
 
             Button(L("task.next", "Tarea siguiente")) {
-                controller?.selectAdjacent(direction: 1, keepEditing: false)
+                // With nothing selected the command also runs while some
+                // other text field (the filter search) has focus — give it
+                // its arrow back instead of grabbing the board.
+                if controller?.selectedTaskID == nil,
+                   let field = NSApp.keyWindow?.firstResponder as? NSTextView {
+                    field.moveDown(nil)
+                } else {
+                    controller?.selectAdjacent(direction: 1, keepEditing: false)
+                }
             }
             .keyboardShortcut(.downArrow, modifiers: [])
-            .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
+            .disabled(controller?.mode != .app || isEditingSelectedTask)
 
             Button(L("task.extendSelectionUp", "Ampliar selección hacia arriba")) {
                 controller?.extendSelection(direction: -1)
