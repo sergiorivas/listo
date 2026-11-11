@@ -82,6 +82,32 @@ struct FreeEditView: NSViewRepresentable {
             highlight(tv)
         }
 
+        /// Return on a task/subtask line continues the list with a fresh
+        /// `- [ ] ` at the same indentation (see `TaskLineContinuation`).
+        /// Goes through `insertText(_:replacementRange:)` so it's one
+        /// native undo step.
+        func textView(_ textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+            guard selector == #selector(NSResponder.insertNewline(_:)) else { return false }
+            let selection = textView.selectedRange()
+            guard selection.length == 0 else { return false }
+            let ns = textView.string as NSString
+            var lineStart = 0, contentsEnd = 0
+            ns.getLineStart(&lineStart, end: nil, contentsEnd: &contentsEnd,
+                            for: NSRange(location: selection.location, length: 0))
+            let lineRange = NSRange(location: lineStart, length: contentsEnd - lineStart)
+            let line = ns.substring(with: lineRange)
+
+            switch TaskLineContinuation.resolve(line: line, cursor: selection.location - lineStart) {
+            case .none:
+                return false
+            case .continueWith(let prefix):
+                textView.insertText("\n" + prefix, replacementRange: selection)
+            case .endList:
+                textView.insertText("", replacementRange: lineRange)
+            }
+            return true
+        }
+
         func highlight(_ textView: NSTextView) {
             guard let storage = textView.textStorage else { return }
             let nsText = storage.string as NSString

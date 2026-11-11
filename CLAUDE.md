@@ -832,3 +832,13 @@ click elsewhere, or the shortcut again close it without adding.
   first-column tint — with hit testing off so a tag chip can't filter the
   board from the panel.
 - Not run in the live GUI.
+
+## Return continues task lines in Free Mode
+
+In `FreeEditView`, Return on a task/subtask line inserts a newline plus
+`- [ ] ` at the same indentation (`TaskLineContinuation`, via the text
+view's `doCommandBy`). The new checkbox is always open, even after a `[x]`
+line. Return on a line that is only an empty checkbox clears it instead
+(ends the list, the usual Markdown-editor convention). A caret inside the
+prefix, a selection, and non-task lines (headings, notes, plain bullets) get
+a plain newline. One native undo step. Not run in the live GUI.
