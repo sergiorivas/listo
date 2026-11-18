@@ -480,6 +480,12 @@ SwiftUI reads as "no animation" — so there is no separate Settings toggle.
 - **Return-chained blank rows** reuse the same view (X → X id, see the bug
   above), so no insertion transition fires for them — the chained case is
   instant by construction.
+- **Kanban collapse chevron shows a pointing hand** and a faint rounded
+  hover background (the whole collapsed strip shows the hand too, since any
+  click on it expands). `pointingHandCursor()` pushes/pops `NSCursor`
+  because `.pointerStyle` needs macOS 15; it also pops on disappear, since
+  the chevron is a different view in each state and would otherwise leave
+  the hand stuck. Not run in the live GUI.
 - Drag hover feedback (`dropTargetHighlight`) on columns, subgroups and
   Outline sections; previously a dragged card gave no sign of where it
   would land.

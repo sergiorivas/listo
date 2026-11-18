@@ -107,6 +107,7 @@ private struct KanbanColumn: View {
     @State private var dragBaseWidth: CGFloat?
     /// A task card is being dragged over this column (`dropDestination`).
     @State private var isDropTargeted = false
+    @State private var isChevronHovering = false
 
     private var documentKey: String { controller.documentKey }
     private var isCollapsed: Bool {
@@ -216,6 +217,8 @@ private struct KanbanColumn: View {
             }
         }
         .frame(maxHeight: .infinity, alignment: .top)
+        // The whole strip expands on click (see `body`), so it all shows the hand.
+        .pointingHandCursor()
     }
 
     private func toggleCollapsed() {
@@ -230,9 +233,17 @@ private struct KanbanColumn: View {
         } label: {
             Image(systemName: "chevron.down")
                 .rotationEffect(.degrees(isCollapsed ? -90 : 0))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(isChevronHovering ? .primary : .secondary)
+                .frame(width: 20, height: 20)
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(Color.primary.opacity(isChevronHovering ? 0.1 : 0))
+                )
+                .contentShape(Rectangle())
         }
         .buttonStyle(.pressable)
+        .onHover { isChevronHovering = $0 }
+        .pointingHandCursor()
         .help(isCollapsed ? L("column.expand", "Expandir columna") : L("column.collapse", "Colapsar columna"))
         .accessibilityLabel(isCollapsed ? L("column.expand", "Expandir columna") : L("column.collapse", "Colapsar columna"))
     }
@@ -543,5 +554,40 @@ private struct TaskRow: View {
     private func beginEditing() {
         controller.selectedTaskID = task.id
         controller.editingTaskID = task.id
+    }
+}
+
+/// Shows the pointing-hand cursor while hovering, for click targets that
+/// don't look like buttons (the column chevron, the collapsed strip).
+/// `.pointerStyle(.link)` would do this but needs macOS 15; this pushes and
+/// pops `NSCursor` instead, and pops on disappear too, since the chevron is
+/// replaced by a different view when the column collapses/expands under the
+/// mouse — otherwise the hand would stick.
+private struct PointingHandCursor: ViewModifier {
+    @State private var isPushed = false
+
+    func body(content: Content) -> some View {
+        content
+            .onHover { hovering in
+                if hovering, !isPushed {
+                    NSCursor.pointingHand.push()
+                    isPushed = true
+                } else if !hovering, isPushed {
+                    NSCursor.pop()
+                    isPushed = false
+                }
+            }
+            .onDisappear {
+                if isPushed {
+                    NSCursor.pop()
+                    isPushed = false
+                }
+            }
+    }
+}
+
+extension View {
+    func pointingHandCursor() -> some View {
+        modifier(PointingHandCursor())
     }
 }
