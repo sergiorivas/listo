@@ -238,6 +238,66 @@ enum LocalizationTable {
 
         "zoom.in": ["es": "Aumentar tamaño de fuente", "en": "Increase Font Size"],
         "zoom.out": ["es": "Reducir tamaño de fuente", "en": "Decrease Font Size"],
+        "menu.welcome": ["es": "Bienvenida a Listo", "en": "Welcome to Listo"],
+        "welcome.skip": ["es": "Omitir", "en": "Skip"],
+        "welcome.back": ["es": "Atrás", "en": "Back"],
+        "welcome.continue": ["es": "Continuar", "en": "Continue"],
+        "welcome.newList": ["es": "Crear una lista", "en": "Create a List"],
+        "welcome.pageOf": ["es": "Página", "en": "Page"],
+        "welcome.file.title": ["es": "Te damos la bienvenida a Listo", "en": "Welcome to Listo"],
+        "welcome.file.message": [
+            "es": "Tus tareas viven en un archivo Markdown común. Sin cuentas ni base de datos: el archivo es tuyo y se abre con cualquier editor.",
+            "en": "Your tasks live in a plain Markdown file. No account, no database: the file is yours, and any text editor can open it.",
+        ],
+        "welcome.file.sample": [
+            "es": "## Por hacer\n- [ ] Pagar el alquiler !!!\n  - [ ] Transferir\n- [x] Llamar a mamá",
+            "en": "## To Do\n- [ ] Pay rent !!!\n  - [ ] Make the transfer\n- [x] Call mom",
+        ],
+        "welcome.file.legend": [
+            "es": "Cada «##» es una columna, cada «- [ ]» una tarea, y lo indentado, una subtarea.",
+            "en": "Each “##” is a column, each “- [ ]” a task, and an indented one a subtask.",
+        ],
+        "welcome.views.title": ["es": "Tres formas de verla", "en": "Three ways to see it"],
+        "welcome.views.message": [
+            "es": "Cambiá entre ellas desde la barra de herramientas; las tres editan el mismo archivo.",
+            "en": "Switch between them from the toolbar; all three edit the same file.",
+        ],
+        "welcome.views.kanban": [
+            "es": "Una columna por sección. Arrastrá tarjetas o usá ⌘← / ⌘→.",
+            "en": "One column per section. Drag cards, or use ⌘← / ⌘→.",
+        ],
+        "welcome.views.outline": [
+            "es": "Todo el documento como esquema, con secciones plegables.",
+            "en": "The whole document as an outline, with foldable sections.",
+        ],
+        "welcome.views.free": ["es": "Modo Libre", "en": "Free Mode"],
+        "welcome.views.freeDetail": [
+            "es": "El Markdown tal cual. Listo lo interpreta al guardar (⌘S).",
+            "en": "The raw Markdown. Listo picks up your changes when you save (⌘S).",
+        ],
+        "welcome.keys.title": ["es": "Hecha para el teclado", "en": "Built for the keyboard"],
+        "welcome.keys.message": [
+            "es": "Seleccioná una tarea con ↑/↓ y trabajá sin tocar el mouse.",
+            "en": "Select a task with ↑/↓ and work without touching the mouse.",
+        ],
+        "welcome.keys.return": ["es": "Otra tarea debajo", "en": "Another task below"],
+        "welcome.keys.tab": ["es": "Convertir en subtarea / volver", "en": "Make a subtask / undo that"],
+        "welcome.keys.space": ["es": "Marcar como hecha", "en": "Mark as done"],
+        "welcome.keys.reorder": ["es": "Reordenar", "en": "Reorder"],
+        "welcome.keys.find": ["es": "Buscar y filtrar", "en": "Search and filter"],
+        "welcome.keys.tokens": [
+            "es": "En el título: «!!!» da prioridad, «@2026-12-01» una fecha y «#trabajo» una etiqueta.",
+            "en": "In a title: “!!!” sets a priority, “@2026-12-01” a due date, and “#work” a tag.",
+        ],
+        "welcome.quick.title": ["es": "Anotá desde cualquier app", "en": "Jot it down from any app"],
+        "welcome.quick.message": [
+            "es": "Este atajo abre un panel pequeño para agregar a la primera columna, sin dejar lo que estás haciendo. También está en el ícono de la barra de menús.",
+            "en": "This shortcut opens a small panel that adds to the first column without leaving what you're doing. It's also in the menu bar icon.",
+        ],
+        "welcome.quick.settings": [
+            "es": "Podés cambiarlo en Ajustes ▸ Barra de menús.",
+            "en": "You can change it in Settings ▸ Menu bar.",
+        ],
         "zoom.reset": ["es": "Restablecer tamaño de fuente", "en": "Reset Font Size"],
     ]
 }

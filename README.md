@@ -64,6 +64,7 @@ Sources/ListoApp/        SwiftUI app (macOS executable), ADR-001
   Localization.swift      AppSettings (language/theme/font size) + L(key, value)
   LocalizationTable.swift es/en translations in code, not a String Catalog
   RecentFilesStore.swift  Remembers opened files; reopens the last one on launch
+  WelcomeView.swift       First-launch welcome pages (also Help ▸ Welcome)
 
 Tests/ListoEngineTests/  137 tests covering the parser, editor, differ, metadata,
                          filter, drop and log

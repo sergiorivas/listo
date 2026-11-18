@@ -280,6 +280,16 @@ private struct UndoRedoCommands: Commands {
 /// `DocumentGroup` creates its own blank document at launch regardless of
 /// `applicationShouldOpenUntitledFile`, so `applicationDidFinishLaunching`
 /// swaps a blank, unedited one for the real choice.
+/// Whether the first-launch welcome has been shown (or skipped as
+/// unnecessary because the user already has lists).
+enum WelcomeState {
+    private static let key = "listo.welcome.hasSeen"
+    static var hasSeen: Bool {
+        get { UserDefaults.standard.bool(forKey: key) }
+        set { UserDefaults.standard.set(newValue, forKey: key) }
+    }
+}
+
 final class ListoAppDelegate: NSObject, NSApplicationDelegate {
     private var isTerminating = false
     /// True from launch until the launch routine has opened (or prompted),
@@ -356,11 +366,41 @@ final class ListoAppDelegate: NSObject, NSApplicationDelegate {
         } else {
             isLaunching = false
             showAllWindows()
-            showStartPrompt(recents: [])
+            if !WelcomeState.hasSeen {
+                WelcomeState.hasSeen = true
+                presentWelcome()
+            } else {
+                showStartPrompt(recents: [])
+            }
+        }
+        // Someone who already has lists isn't new: don't show it after an
+        // update either.
+        if !existingRecents().isEmpty { WelcomeState.hasSeen = true }
+    }
+
+    /// Shows the welcome window, then carries on from the choice. Dismissing
+    /// it with nothing open falls back to the start prompt, so the app is
+    /// never left without a document. `isPrompting` is held while it's up:
+    /// a "nothing open" check queued at launch would otherwise fire inside
+    /// the modal session and stack the start prompt on top of it.
+    func presentWelcome() {
+        guard !isPrompting else { return }
+        isPrompting = true
+        let choice = WelcomeWindow.runModal()
+        isPrompting = false
+        switch choice {
+        case .newDocument:
+            NSDocumentController.shared.newDocument(nil)
+        case .openFile:
+            beginOpenPanel()
+        case .dismissed:
+            ensureDocumentOpen()
         }
     }
 
     @objc private func windowWillClose(_ notification: Notification) {
+        // The welcome window decides what comes next itself (`presentWelcome`).
+        if notification.object is WelcomeNSWindow { return }
         // Deferred a runloop turn: the closing document is still registered
         // with `NSDocumentController` while `willClose` fires.
         DispatchQueue.main.async { [weak self] in self?.ensureDocumentOpen() }
@@ -383,6 +423,18 @@ final class ListoAppDelegate: NSObject, NSApplicationDelegate {
             if document == nil, NSDocumentController.shared.documents.isEmpty {
                 self?.showStartPrompt(recents: self?.existingRecents() ?? [])
             }
+        }
+    }
+
+    /// A cancelled panel with nothing open goes back to the start prompt.
+    private func beginOpenPanel() {
+        NSDocumentController.shared.beginOpenPanel { [weak self] urls in
+            guard let self else { return }
+            guard let urls, !urls.isEmpty else {
+                DispatchQueue.main.async { self.ensureDocumentOpen() }
+                return
+            }
+            urls.forEach { self.open($0) }
         }
     }
 
@@ -423,14 +475,7 @@ final class ListoAppDelegate: NSObject, NSApplicationDelegate {
                 open(recents[index])
             }
         case 1:
-            NSDocumentController.shared.beginOpenPanel { [weak self] urls in
-                guard let self else { return }
-                guard let urls, !urls.isEmpty else {
-                    DispatchQueue.main.async { self.ensureDocumentOpen() }
-                    return
-                }
-                urls.forEach { self.open($0) }
-            }
+            beginOpenPanel()
         case 2:
             NSDocumentController.shared.newDocument(nil)
         default:
@@ -504,6 +549,13 @@ struct ListoApp: App {
             }
             UndoRedoCommands()
             TaskCommands()
+            // There's no Help Book, so the stock "Listo Help" item only said
+            // help isn't available; the welcome pages take its place.
+            CommandGroup(replacing: .help) {
+                Button(L("menu.welcome", "Bienvenida a Listo")) {
+                    appDelegate.presentWelcome()
+                }
+            }
         }
 
         Settings {

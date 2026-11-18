@@ -231,6 +231,19 @@ edited. This stays purely in-memory (spec §09: never written to the file).
   (`isTerminating`). Replaced the earlier "reopen a different recent file on
   close" behaviour. Not verified with a live GUI run.
 
+- **First-launch welcome** (`WelcomeView.swift`): four short pages (the
+  file is plain Markdown, the three views, keyboard + `!!!`/`@date`/`#tag`
+  tokens, the quick-add hotkey), ending in Create a list / Open file….
+  Shown once (`WelcomeState.hasSeen`), only when there are no existing
+  recent files, so people upgrading with lists never see it; Help ▸
+  Welcome to Listo reopens it (replacing the stock Help item, which only
+  said no help was available). An app-modal window, not a sheet, because at
+  launch there is no document window to hang it on. Skip/close falls back
+  to the start prompt. It holds `isPrompting` while up, and the delegate
+  ignores its close (`WelcomeNSWindow`), so the "nothing open" check can't
+  stack the start prompt on top. Picked over a sample tutorial board,
+  a shortcuts cheat sheet and contextual hints. Not run in the live GUI.
+
 - Release distribution is ad-hoc signed + `xattr -cr`, not notarized:
   getting a real Developer ID would mean a paid Apple Developer account
   (~$99/year). Ad-hoc signing plus stripping the download's Gatekeeper
