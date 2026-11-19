@@ -286,13 +286,49 @@ extension View {
     /// of sight. Rows carry `.id(task.id)`; a reader whose scroll view doesn't
     /// hold that id (another Kanban column) does nothing. Anchor `nil` scrolls
     /// only as far as needed, so a row already visible doesn't jump.
-    /// Deferred a runloop turn so a just-inserted row has been laid out.
-    func scrollsToSelection(of controller: DocumentController, using proxy: ScrollViewProxy) -> some View {
-        onChange(of: controller.selectedTaskID) { _, id in
-            guard let id else { return }
-            DispatchQueue.main.async {
-                withAnimation(Motion.snappy) { proxy.scrollTo(id) }
-            }
+    ///
+    /// Also fires when the tree changes with the same selected id (a
+    /// Return-chained blank reuses its id; a move elsewhere in the column),
+    /// and scrolls twice: a runloop turn later so a just-inserted row has
+    /// been laid out, and again once its insert/flight transition has
+    /// settled, since mid-transition its frame isn't final yet.
+    ///
+    /// `target` maps the selected task to the id to scroll to in *this*
+    /// scroll view — the task itself for a column/the Outline list, or its
+    /// column for the Kanban board's horizontal scroller.
+    func scrollsToSelection(
+        of controller: DocumentController,
+        using proxy: ScrollViewProxy,
+        target: @escaping (UUID) -> AnyHashable? = { $0 }
+    ) -> some View {
+        modifier(ScrollsToSelection(controller: controller, proxy: proxy, target: target))
+    }
+}
+
+private struct ScrollsToSelection: ViewModifier {
+    @ObservedObject var controller: DocumentController
+    let proxy: ScrollViewProxy
+    let target: (UUID) -> AnyHashable?
+
+    private struct Trigger: Equatable {
+        let selected: UUID?
+        let taskIDs: [UUID]
+    }
+
+    func body(content: Content) -> some View {
+        content.onChange(of: Trigger(selected: controller.selectedTaskID,
+                                     taskIDs: controller.document.allTasksRecursive.map(\.id))) { _, new in
+            guard let id = new.selected else { return }
+            scroll(to: id, after: 0)
+            scroll(to: id, after: 0.4)
+        }
+    }
+
+    private func scroll(to taskID: UUID, after delay: TimeInterval) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            // The selection may have moved on by the second pass.
+            guard controller.selectedTaskID == taskID, let id = target(taskID) else { return }
+            withAnimation(Motion.snappy) { proxy.scrollTo(id) }
         }
     }
 }

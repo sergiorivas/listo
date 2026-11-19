@@ -856,6 +856,17 @@ the end of a long column, ↑/↓ past the edge, a move landing out of sight.
 Anchor `nil` (scroll only as far as needed), deferred a runloop turn so a
 just-inserted row is laid out. Not run in the live GUI.
 
+That first version only scrolled each Kanban column *vertically*: nothing
+scrolled the board sideways, so in a narrow window ⌘N (first column) while
+scrolled right, or ⌘←/⌘→ / Move to… into an off-screen column, lost the task.
+The board's horizontal `ScrollView` now has its own reader, scrolling to the
+selected task's column (columns carry `.id(section.id)`). The modifier also
+fires when the tree changes under an unchanged selection (Return-chained
+blanks reuse their id), and runs a second pass 0.4s later, once insert and
+flight transitions have settled and the row's frame is final. A selection
+landing in a collapsed column (a move, an undo) expands it; ↑/↓ already skip
+collapsed columns, so this never fights navigation. Not run in the live GUI.
+
 ## Menu bar quick-add (⌃⌥⌘T, configurable)
 
 A menu bar icon plus one system-wide shortcut (⌃⌥⌘T by default) open the same

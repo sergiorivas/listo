@@ -44,6 +44,7 @@ struct KanbanView: View {
 
     private var board: some View {
         GeometryReader { geometry in
+            ScrollViewReader { proxy in
             ScrollView(.horizontal) {
                 HStack(alignment: .top, spacing: Self.columnSpacing) {
                     ForEach(controller.document.sections, id: \.id) { section in
@@ -52,6 +53,7 @@ struct KanbanView: View {
                             section: section,
                             collapsedHeight: max(geometry.size.height - Self.horizontalPadding * 2, 0)
                         )
+                            .id(section.id)
                             .transition(Motion.sectionTransition)
                     }
                     addColumnButton
@@ -63,8 +65,38 @@ struct KanbanView: View {
                 // area this has no effect and normal scrolling takes over.
                 .frame(minWidth: geometry.size.width, alignment: .center)
             }
+            // Each column scrolls itself vertically to the selected card;
+            // this scrolls the board sideways to that card's column (⌘N on
+            // the first column while scrolled right, ⌘←/⌘→ or Move to… into
+            // a column out of sight).
+            .scrollsToSelection(of: controller, using: proxy) { id in
+                column(containing: id)?.id
+            }
+            }
         }
         .background(Color(nsColor: .windowBackgroundColor))
+        .onChange(of: controller.selectedTaskID) { _, id in
+            expandColumnIfCollapsed(containing: id)
+        }
+    }
+
+    /// The top-level section (column) whose card — or subgroup card, or a
+    /// card's subtask — is `taskID`.
+    private func column(containing taskID: UUID) -> ListoSection? {
+        controller.document.sections.first { section in
+            section.allTasksRecursive.contains { $0.id == taskID }
+        }
+    }
+
+    /// A selection that lands in a collapsed column (a move, an undo, ⌘N)
+    /// would be invisible, so that column opens. ↑/↓ already skip collapsed
+    /// columns, so this never fights navigation.
+    private func expandColumnIfCollapsed(containing taskID: UUID?) {
+        guard let taskID, let section = column(containing: taskID),
+              layout.isCollapsed(documentKey: controller.documentKey, sectionTitle: section.title) else { return }
+        withAnimation(Motion.snappy) {
+            layout.setCollapsed(false, documentKey: controller.documentKey, sectionTitle: section.title)
+        }
     }
 }
 
