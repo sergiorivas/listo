@@ -93,6 +93,17 @@ final class DocumentController: ObservableObject {
     /// the eye can follow it — see `flash(taskID:)` and `RowHighlight`.
     @Published private(set) var flashTaskID: UUID?
     private var flashGeneration = 0
+    /// While a moved task is in flight: its new id → the id it had before
+    /// the move. A move gives the task a new content-derived id (its section
+    /// is part of it), which SwiftUI would show as one card fading out and
+    /// another fading in; keying the card's `matchedGeometryEffect` on the
+    /// *old* id for the move's transaction lets it fly from where it was to
+    /// where it lands instead — see `flightKey(for:)` and `TaskFlight`.
+    @Published private(set) var flightIDs: [UUID: UUID] = [:]
+    private var flightGeneration = 0
+    /// The "Deleted … — Undo" banner after a destructive action.
+    @Published private(set) var undoToast: UndoToast?
+    private var toastGeneration = 0
     @Published private(set) var logEvents: [LogEvent] = []
     @Published var errorMessage: String?
     /// The file's text when it changed on disk while this window also has
@@ -372,11 +383,16 @@ final class DocumentController: ObservableObject {
     func split(taskID: UUID) {
         let ids = targets(for: taskID)
         if ids.count > 1 {
-            performBatch(ids.reversed(), silencing: { $0 == .noSubtasksToSplit || $0 == .taskNotFound }) { try $0.splitTask(taskID: $1) }
+            if performBatch(ids.reversed(), silencing: { $0 == .noSubtasksToSplit || $0 == .taskNotFound }, { try $0.splitTask(taskID: $1) }) {
+                showUndoToast(String(format: L("toast.splitMany", "%d tareas divididas"), ids.count))
+            }
             return
         }
-        perform(animation: Motion.snappy, followSelectionFrom: taskID, silencing: { $0 == .noSubtasksToSplit }) {
+        let parts = document.allTasksRecursive.first { $0.id == taskID }?.subtasks.count ?? 0
+        if perform(animation: Motion.snappy, followSelectionFrom: taskID, silencing: { $0 == .noSubtasksToSplit }, {
             try $0.splitTask(taskID: taskID)
+        }) {
+            showUndoToast(String(format: L("toast.split", "Dividida en %d tareas"), parts))
         }
     }
 
@@ -389,6 +405,7 @@ final class DocumentController: ObservableObject {
         guard ids.count > 1 else { return }
         guard perform(animation: Motion.snappy, flash: true, followSelectionFrom: taskID, { try $0.groupTasks(taskIDs: ids) }),
               let groupID = editor.lastActionTaskID else { return }
+        showUndoToast(String(format: L("toast.grouped", "%d tareas agrupadas"), ids.count))
         keepsMultiSelection = true
         multiSelectedIDs = []
         selectedTaskID = groupID
@@ -409,7 +426,7 @@ final class DocumentController: ObservableObject {
             }
             return
         }
-        perform(followSelectionFrom: taskID, silencing: { $0 == .noSectionInDirection }) {
+        perform(animation: Motion.snappy, fly: true, followSelectionFrom: taskID, silencing: { $0 == .noSectionInDirection }) {
             try $0.moveTaskToAdjacentSection(taskID: taskID, direction: direction)
         }
     }
@@ -418,7 +435,7 @@ final class DocumentController: ObservableObject {
     /// the engine refuses (`DropRule` already filters these) is a silent
     /// no-op.
     func drop(taskID: UUID, onto targetID: UUID, placement: DropPlacement) {
-        perform(animation: Motion.snappy, flash: true, followSelectionFrom: taskID, silencing: { $0 == .invalidMove || $0 == .taskHasContent }) {
+        perform(animation: Motion.snappy, flash: true, fly: true, followSelectionFrom: taskID, silencing: { $0 == .invalidMove || $0 == .taskHasContent }) {
             try $0.moveTask(taskID: taskID, relativeTo: targetID, placement: placement)
         }
     }
@@ -426,10 +443,12 @@ final class DocumentController: ObservableObject {
     func move(taskID: UUID, toSectionID sectionID: UUID) {
         let ids = targets(for: taskID)
         if ids.count > 1 {
-            performBatch(ids, follow: true) { try $0.moveTask(taskID: $1, toSectionID: sectionID) }
+            if performBatch(ids, follow: true, { try $0.moveTask(taskID: $1, toSectionID: sectionID) }) {
+                showUndoToast(String(format: L("toast.moved", "%d tareas movidas"), ids.count))
+            }
             return
         }
-        perform(animation: Motion.snappy, flash: true, followSelectionFrom: taskID) { try $0.moveTask(taskID: taskID, toSectionID: sectionID) }
+        perform(animation: Motion.snappy, flash: true, fly: true, followSelectionFrom: taskID) { try $0.moveTask(taskID: taskID, toSectionID: sectionID) }
     }
 
     /// Inserts a new, empty sibling task right after `taskID` (same level —
@@ -446,13 +465,21 @@ final class DocumentController: ObservableObject {
     func delete(taskID: UUID) {
         let ids = targets(for: taskID)
         if ids.count > 1 {
-            if performBatch(ids, silencing: { $0 == .taskNotFound }, { try $0.deleteTask(taskID: $1) }) { SoundPlayer.playDeleteIfNeeded() }
+            if performBatch(ids, silencing: { $0 == .taskNotFound }, { try $0.deleteTask(taskID: $1) }) {
+                SoundPlayer.playDeleteIfNeeded()
+                showUndoToast(String(format: L("toast.deletedMany", "%d tareas eliminadas"), ids.count))
+            }
             return
         }
+        let title = document.allTasksRecursive.first { $0.id == taskID }?.displayTitle ?? ""
         guard perform(animation: Motion.snappy, { try $0.deleteTask(taskID: taskID) }) else { return }
         if selectedTaskID == taskID { selectedTaskID = nil }
         if editingTaskID == taskID { editingTaskID = nil }
         SoundPlayer.playDeleteIfNeeded()
+        // A blank task has nothing worth getting back.
+        if !title.trimmingCharacters(in: .whitespaces).isEmpty {
+            showUndoToast(String(format: L("toast.deleted", "Se eliminó “%@”"), Self.toastSnippet(title)))
+        }
     }
 
 
@@ -502,7 +529,52 @@ final class DocumentController: ObservableObject {
     }
 
     func deleteSection(sectionID: UUID) {
-        perform(animation: Motion.snappy) { try $0.deleteSection(sectionID: sectionID) }
+        let title = document.allSectionsRecursive.first { $0.id == sectionID }?.title ?? ""
+        if perform(animation: Motion.snappy, { try $0.deleteSection(sectionID: sectionID) }) {
+            showUndoToast(String(format: L("toast.deletedSection", "Se eliminó la sección “%@”"), Self.toastSnippet(title)))
+        }
+    }
+
+    // MARK: - Priority / view shortcuts
+
+    /// ⌥⌘1/2/3, ⌥⌘0 — the selected task's (or multi-selection's) priority.
+    func setPriorityOfSelection(_ priority: TaskPriority) {
+        guard mode == .app, let id = selectedTaskID else { return }
+        setPriority(taskID: id, priority: priority)
+    }
+
+    /// ⌘1 / ⌘2 — App Mode with that view; ⌘3 — Free Mode.
+    func show(_ style: ViewStyle) {
+        if mode != .app { mode = .app }
+        viewStyle = style
+    }
+
+    // MARK: - Undo banner
+
+    /// Shows the "… — Undo" banner for a few seconds; a newer one replaces it.
+    func showUndoToast(_ message: String) {
+        toastGeneration += 1
+        let generation = toastGeneration
+        withAnimation(Motion.snappy ?? Motion.fade) { undoToast = UndoToast(message: message) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + UndoToast.lifetime) { [weak self] in
+            guard let self, self.toastGeneration == generation else { return }
+            self.dismissUndoToast()
+        }
+    }
+
+    func dismissUndoToast() {
+        guard undoToast != nil else { return }
+        withAnimation(Motion.quick ?? Motion.fade) { undoToast = nil }
+    }
+
+    /// The banner's Undo button: one ⌘Z.
+    func undoFromToast() {
+        dismissUndoToast()
+        undo()
+    }
+
+    static func toastSnippet(_ text: String) -> String {
+        text.count > 40 ? String(text.prefix(39)) + "…" : text
     }
 
     // MARK: - Undo / redo
@@ -519,6 +591,7 @@ final class DocumentController: ObservableObject {
 
     private func stepHistory(_ step: (ListoEditor) throws -> LogEvent?) {
         guard mode == .app else { return }
+        dismissUndoToast()
         do {
             guard let event = try step(editor) else { return }
             syncDocumentText()
@@ -571,6 +644,7 @@ final class DocumentController: ObservableObject {
     func perform(
         animation: Animation? = nil,
         flash: Bool = false,
+        fly: Bool = false,
         followSelectionFrom taskID: UUID? = nil,
         silencing: (ListoEditorError) -> Bool = { _ in false },
         _ action: (ListoEditor) throws -> LogEvent
@@ -578,7 +652,12 @@ final class DocumentController: ObservableObject {
         do {
             _ = try action(editor)
             syncDocumentText()
+            let flight: [UUID: UUID] = {
+                guard fly, animation != nil, let taskID, let newID = self.editor.lastActionTaskID, newID != taskID else { return [:] }
+                return [newID: taskID]
+            }()
             let apply = {
+                if !flight.isEmpty { self.startFlight(flight) }
                 self.document = self.editor.document
                 if let taskID, let newID = self.editor.lastActionTaskID {
                     if self.selectedTaskID == taskID { self.selectedTaskID = newID }
@@ -620,6 +699,23 @@ final class DocumentController: ObservableObject {
         }
     }
 
+    /// The id a top-level card keys its `matchedGeometryEffect` on: the
+    /// id it had before the move that is still in flight, else its own.
+    func flightKey(for id: UUID) -> UUID { flightIDs[id] ?? id }
+
+    /// Set inside the move's animated transaction, so the card leaving and
+    /// the card arriving share a key; cleared once the animation is done
+    /// (the key then quietly changes to the card's own id).
+    private func startFlight(_ ids: [UUID: UUID]) {
+        flightGeneration += 1
+        let generation = flightGeneration
+        flightIDs = ids
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            guard let self, self.flightGeneration == generation else { return }
+            self.flightIDs = [:]
+        }
+    }
+
     /// Highlights `taskID`'s row for a moment (`RowHighlight`), fading out
     /// after — a later flash cancels the earlier one's fade-out.
     func flash(taskID: UUID) {
@@ -643,4 +739,11 @@ final class DocumentController: ObservableObject {
     }
 
     var logFileURL: URL { editor.logWriter.logFileURL }
+}
+
+/// The transient "Deleted “Buy milk” — Undo" banner (`ContentView`).
+struct UndoToast: Identifiable, Equatable {
+    let id = UUID()
+    let message: String
+    static let lifetime: TimeInterval = 5
 }

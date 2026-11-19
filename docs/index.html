@@ -4,8 +4,20 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Listo</title>
-<meta name="description" content="A to-do list that lives as plain Markdown on disk.">
+<meta name="description" content="A to-do list for macOS that lives as plain Markdown on disk — Kanban, Outline, or the raw text, all in sync.">
 <link rel="icon" href="icon.png">
+<link rel="canonical" href="https://sergiorivas.github.io/listo/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Listo">
+<meta property="og:title" content="Listo — a to-do list that's just a text file">
+<meta property="og:description" content="Kanban board, Outline view, or the raw Markdown. One .md file, no database, no account. Free for macOS.">
+<meta property="og:url" content="https://sergiorivas.github.io/listo/">
+<meta property="og:image" content="https://sergiorivas.github.io/listo/screenshots/kanban.png">
+<meta property="og:image:alt" content="Listo's Kanban board with To Do, In Progress and Done columns">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Listo — a to-do list that's just a text file">
+<meta name="twitter:description" content="Kanban board, Outline view, or the raw Markdown. One .md file, no database, no account. Free for macOS.">
+<meta name="twitter:image" content="https://sergiorivas.github.io/listo/screenshots/kanban.png">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
@@ -222,7 +234,74 @@
   footer .flinks a:hover{ color:var(--text); }
   .fnote{ margin-top:28px; font-size:13px; color:var(--text-muted); max-width:60ch; }
 
+  /* ---------- install extras ---------- */
+  .install-head{ display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:10px; }
+  .install-head .label{ font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--mono-text-dim); text-transform:uppercase; letter-spacing:0.08em; }
+  .copy-btn{
+    font-family:'IBM Plex Sans', sans-serif; font-size:13px; font-weight:600;
+    background:rgba(255,255,255,0.08); color:var(--mono-text); border:1px solid rgba(255,255,255,0.14);
+    border-radius:7px; padding:6px 12px; cursor:pointer;
+  }
+  .copy-btn:hover{ background:rgba(255,255,255,0.14); }
+  .copy-btn:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
+  .install-alt{ margin-top:22px; display:flex; flex-wrap:wrap; gap:14px; align-items:center; }
+  .install-alt p{ font-size:14.5px; color:var(--text-muted); max-width:60ch; }
+
+  /* ---------- feature grid (newer features) ---------- */
+  .feature-grid{ margin-top:56px; display:grid; grid-template-columns:repeat(3, 1fr); gap:18px; }
+  .fcard{
+    border:1px solid var(--border); border-radius:14px; background:var(--surface);
+    padding:22px; display:flex; flex-direction:column; gap:10px;
+  }
+  .fcard h4{ margin:0; font-size:16px; font-weight:600; }
+  .fcard p{ color:var(--text-muted); font-size:14.5px; }
+  .kbd{
+    display:inline-block; font-family:'IBM Plex Mono', monospace; font-size:12px;
+    border:1px solid var(--border); border-bottom-width:2px; border-radius:5px;
+    padding:1px 6px; background:var(--surface-2); color:var(--text); white-space:nowrap;
+  }
+
+  /* mock task card with badges */
+  .mock-card{
+    border:1px solid var(--border); border-radius:10px; background:var(--surface-2);
+    padding:12px 14px; display:flex; gap:10px; align-items:flex-start; font-size:14.5px;
+  }
+  .mock-box{ flex:none; width:15px; height:15px; border:1.5px solid var(--text-muted); border-radius:4px; margin-top:3px; }
+  .mock-title{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
+  .badge{
+    display:inline-flex; align-items:center; gap:3px; font-size:12px; font-weight:600;
+    border-radius:5px; padding:1px 6px; line-height:1.5;
+  }
+  .badge.pri{ color:#D9442E; background:rgba(217,68,46,0.12); }
+  .badge.due{ color:#D9442E; background:rgba(217,68,46,0.10); }
+  .badge.tag{ color:var(--accent); background:color-mix(in srgb, var(--accent) 14%, transparent); }
+
+  /* mock quick-add panel */
+  .mock-panel{
+    border:1px solid var(--border); border-radius:12px; background:var(--surface-2);
+    padding:12px; display:flex; flex-direction:column; gap:7px; font-size:13.5px;
+  }
+  .mock-panel .row-item{ display:flex; gap:8px; align-items:center; color:var(--text); }
+  .mock-panel .row-item.done{ color:var(--text-muted); text-decoration:line-through; }
+  .mock-panel .field{
+    margin-top:4px; border:1px solid var(--accent); border-radius:7px; padding:6px 9px;
+    color:var(--text-muted); background:var(--surface);
+  }
+
+  /* mock undo toast */
+  .mock-toast{
+    align-self:flex-start; display:inline-flex; gap:12px; align-items:center;
+    border:1px solid var(--border); border-radius:999px; background:var(--surface-2);
+    padding:7px 14px; font-size:13.5px; box-shadow:0 8px 20px -10px rgba(0,0,0,0.3);
+  }
+  .mock-toast b{ color:var(--accent); }
+
+  @media (max-width:960px){
+    .feature-grid{ grid-template-columns:1fr 1fr; }
+  }
+
   @media (max-width:760px){
+    .feature-grid{ grid-template-columns:1fr; }
     .row{ grid-template-columns:1fr; gap:28px; }
     .row.rev .copy{ order:1; } .row.rev .shot{ order:2; }
     .proof{ grid-template-columns:1fr; }
@@ -239,17 +318,19 @@
     <div class="navlinks">
       <a href="#how">How it works</a>
       <a href="#markdown">Plain text</a>
+      <a href="#features">Features</a>
       <a href="#install">Install</a>
     </div>
     <a class="btn ghost" href="https://github.com/sergiorivas/listo">GitHub ↗</a>
   </nav>
 
   <header class="hero">
-    <span class="eyebrow">for macOS</span>
+    <span class="eyebrow">for macOS 14 Sonoma and later</span>
     <h1 class="headline">A to‑do list that's just a text file.</h1>
     <p class="sub">Kanban board. Outline view. Or open the raw Markdown and type. Listo keeps all three in sync — no database, no account, no lock‑in. Just a <code>.md</code> file, wherever you keep it.</p>
     <div class="hero-actions">
       <a class="btn" href="#install">Get Listo — it's free</a>
+      <a class="btn ghost" href="https://github.com/sergiorivas/listo/releases/latest">Download .zip</a>
     </div>
 
     <div class="window">
@@ -295,7 +376,7 @@
     <div class="row">
       <div class="copy">
         <h3>Things‑style keyboard control</h3>
-        <p>Select a row, then <code>⇥</code> / <code>⇧⇥</code> to indent or outdent, arrow keys to move, right‑click for the rest — rename, move to another column, edit its note, split it into one task per subtask (<code>⌘T</code>), delete. Nothing here requires reaching for the mouse.</p>
+        <p>Select a row, then <code>⇥</code> / <code>⇧⇥</code> to indent or outdent, <code>⌘↑</code> / <code>⌘↓</code> to reorder, <code>⌘←</code> / <code>⌘→</code> to send it to the next column, <code>Space</code> to check it off. <code>⇧↑</code> / <code>⇧↓</code> select several at once; <code>⌘G</code> groups them into one task, <code>⌘T</code> splits a task back into its subtasks. Right‑click for the rest.</p>
         <div class="taglist">
           <div class="tagitem"><span class="box">✓</span> Selection follows you between views</div>
           <div class="tagitem"><span class="box">✓</span> Context menu on every row</div>
@@ -335,6 +416,59 @@
     <p class="lede" style="margin-top:24px;">Prefer to type directly? <strong>Free Mode</strong> gives you the raw text with syntax highlighting — no watcher fighting your edits, no auto‑formatting while you type. Listo only re‑reads the file when you save, so pasting or typing fast never gets reverted out from under you.</p>
   </section>
 
+  <section id="features" class="tight">
+    <span class="kicker">Everyday features</span>
+    <h2 class="sectitle">Type it, and it shows up right.</h2>
+    <p class="lede">Priorities, due dates and tags are just a few characters in the task's title, so they survive any editor that touches the file. Listo turns them into badges on the board.</p>
+
+    <div class="feature-grid">
+      <div class="fcard">
+        <div class="mock-card" aria-hidden="true">
+          <span class="mock-box"></span>
+          <span class="mock-title">Renew passport
+            <span class="badge pri">!!!</span>
+            <span class="badge due">Dec 1</span>
+            <span class="badge tag">#admin</span>
+          </span>
+        </div>
+        <h4>Priority, dates and tags in the title</h4>
+        <p><code>!</code> to <code>!!!</code> sets a priority and the board sorts by it. <code>@2026-12-01</code> is a due date that turns red when it's overdue. <code>#admin</code> is a tag; click it to filter.</p>
+      </div>
+
+      <div class="fcard">
+        <div class="mock-panel" aria-hidden="true">
+          <div class="row-item"><span class="mock-box"></span> Call the bank</div>
+          <div class="row-item"><span class="mock-box"></span> Review the budget</div>
+          <div class="row-item done"><span class="mock-box"></span> Book flights</div>
+          <div class="field">New task…</div>
+        </div>
+        <h4>Quick add from any app</h4>
+        <p>Press <span class="kbd">⌃⌥⌘T</span> anywhere and a small panel drops from the menu bar, showing your first column's top tasks and a field to add one. Esc closes it. You can change the shortcut.</p>
+      </div>
+
+      <div class="fcard">
+        <div class="mock-toast" aria-hidden="true">Deleted “Book flights” <b>Undo</b></div>
+        <h4>Undo everything</h4>
+        <p>Every board action can be undone with <span class="kbd">⌘Z</span>: deletes, moves, priority changes, splits and groups. After a delete, an Undo button shows up for a few seconds.</p>
+      </div>
+
+      <div class="fcard">
+        <h4>Search and filter</h4>
+        <p><span class="kbd">⌘F</span> searches titles and notes. The filter menu narrows by state, priority, due date or tag. Filtering only hides rows and never touches the file.</p>
+      </div>
+
+      <div class="fcard">
+        <h4>Drag to reorder or nest</h4>
+        <p>Drop a card on the edge of another to put it before or after it, on its middle to make it a subtask, or on a column to move it there. Moved cards slide to their new spot.</p>
+      </div>
+
+      <div class="fcard">
+        <h4>Shortcuts for the rest</h4>
+        <p><span class="kbd">⌥⌘1</span>–<span class="kbd">⌥⌘3</span> set a priority, and <span class="kbd">⌘1</span> / <span class="kbd">⌘2</span> / <span class="kbd">⌘3</span> switch between Kanban, Outline and Free Mode. Settings lists all of them.</p>
+      </div>
+    </div>
+  </section>
+
   <section class="tight">
     <span class="kicker">Built for how a list actually gets used</span>
     <h2 class="sectitle">Small, deliberate scope.</h2>
@@ -349,7 +483,7 @@
       </div>
       <div class="checkrow">
         <div class="check"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-6" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-        <div><h4>An LLM only if you bring one</h4><p>Edit Free Mode text in a way that's genuinely ambiguous, and Listo can ask an LLM to reconcile it — using your own API key. Skip Settings entirely and it just logs the change as unresolved.</p></div>
+        <div><h4>An LLM only if you bring one</h4><p>Edit Free Mode text in a way that's genuinely ambiguous, and Listo can ask an LLM to describe it in the history log, using your own Anthropic or OpenRouter key (Settings has a Test connection button). Skip Settings entirely and it just logs the change as unresolved.</p></div>
       </div>
       <div class="checkrow">
         <div class="check"><svg viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-6" stroke="white" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
@@ -361,11 +495,19 @@
   <section id="install" class="tight">
     <span class="kicker">Install</span>
     <h2 class="sectitle">Three commands, via Homebrew.</h2>
-    <p class="lede">Listo ships as a signed, ad‑hoc build distributed through a Homebrew cask — no App Store, no notarization fee passed on to you.</p>
+    <p class="lede">Listo is distributed through a Homebrew cask. It's an ad‑hoc signed build, not notarized by Apple, so there's no App Store and no Developer ID fee passed on to you. The cask clears the quarantine flag for you. Requires macOS 14 Sonoma or later.</p>
     <div class="install-card">
-      <div class="line"><span class="prompt">$</span> brew tap sergiorivas/tap</div>
-      <div class="line"><span class="prompt">$</span> brew trust --cask sergiorivas/tap/listo <span class="cmt">// it's a third-party tap</span></div>
-      <div class="line"><span class="prompt">$</span> brew install --cask listo</div>
+      <div class="install-head">
+        <span class="label">Terminal</span>
+        <button class="copy-btn" type="button" id="copy-install" aria-live="polite">Copy</button>
+      </div>
+      <div class="line"><span class="prompt">$</span> <span class="cmd">brew tap sergiorivas/tap</span></div>
+      <div class="line"><span class="prompt">$</span> <span class="cmd">brew trust --cask sergiorivas/tap/listo</span> <span class="cmt">// it's a third-party tap</span></div>
+      <div class="line"><span class="prompt">$</span> <span class="cmd">brew install --cask listo</span></div>
+    </div>
+    <div class="install-alt">
+      <a class="btn ghost" href="https://github.com/sergiorivas/listo/releases/latest">Download the latest .zip</a>
+      <p>Not using Homebrew? Unzip, move <code>Listo.app</code> to Applications, then run <code>xattr -cr /Applications/Listo.app</code> once (or right‑click ▸ Open) so macOS lets an un‑notarized app open.</p>
     </div>
   </section>
 
@@ -378,8 +520,29 @@
         <a href="https://github.com/sergiorivas/listo/releases">Releases</a>
       </div>
     </div>
-    <p class="fnote">Listo is a small, independent macOS app. Not notarized by Apple — see the README for why, and how to open it the first time.</p>
+    <p class="fnote">Listo is a small, independent macOS app. Not notarized by Apple — see <a href="https://github.com/sergiorivas/listo#opening-it-the-first-time">the README</a> for why, and how to open it the first time.</p>
   </footer>
 </div>
+<script>
+  (function () {
+    var button = document.getElementById('copy-install');
+    if (!button) return;
+    var commands = Array.prototype.map.call(
+      document.querySelectorAll('.install-card .cmd'),
+      function (el) { return el.textContent.trim(); }
+    ).join('\n');
+    button.addEventListener('click', function () {
+      var done = function (label) {
+        button.textContent = label;
+        setTimeout(function () { button.textContent = 'Copy'; }, 1800);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(commands).then(function () { done('Copied'); }, function () { done('Copy failed'); });
+      } else {
+        done('Copy failed');
+      }
+    });
+  })();
+</script>
 </body>
 </html>

@@ -168,6 +168,19 @@ private struct TaskCommands: Commands {
             .keyboardShortcut("g", modifiers: .command)
             .disabled(controller?.mode != .app || (controller?.multiSelectedIDs.count ?? 0) < 2 || isEditingSelectedTask)
 
+            // ⌥⌘1/2/3 set a priority, ⌥⌘0 clears it — the selected task
+            // or the whole multi-selection, like the context menu's
+            // Priority submenu. Not ⌘0: that is the font size reset.
+            Menu(L("task.priority", "Prioridad")) {
+                ForEach([TaskPriority.high, .medium, .low, .none], id: \.self) { priority in
+                    Button(PriorityShortcut.label(for: priority)) {
+                        controller?.setPriorityOfSelection(priority)
+                    }
+                    .keyboardShortcut(PriorityShortcut.key(for: priority), modifiers: [.command, .option])
+                }
+            }
+            .disabled(controller?.mode != .app || controller?.selectedTaskID == nil || isEditingSelectedTask)
+
             // Kanban only: columns are what "previous/next section" means
             // there. Also disabled while editing, where ⌘←/⌘→ are the text
             // field's own "jump to start/end of line".
@@ -222,6 +235,65 @@ private struct TaskCommands: Commands {
             }
             .keyboardShortcut(.cancelAction)
             .disabled(controller?.selectedTaskID == nil)
+        }
+    }
+}
+
+/// View menu: which view/mode (⌘1 Kanban, ⌘2 Outline, ⌘3 Free Mode — the
+/// toolbar pickers had no key equivalents) and the font size. Its own
+/// `Commands` so it can see the focused window's controller.
+private struct ViewCommands: Commands {
+    @FocusedObject private var controller: DocumentController?
+    @ObservedObject private var settings = AppSettings.shared
+
+    var body: some Commands {
+        CommandMenu(L("menu.view", "Ver")) {
+            Button {
+                controller?.show(.kanban)
+            } label: {
+                Label(L("view.kanban", "Kanban"), systemImage: "rectangle.split.3x1")
+            }
+            .keyboardShortcut("1", modifiers: .command)
+            .disabled(controller == nil)
+
+            Button {
+                controller?.show(.outline)
+            } label: {
+                Label(L("view.outline", "Outline"), systemImage: "list.bullet.indent")
+            }
+            .keyboardShortcut("2", modifiers: .command)
+            .disabled(controller == nil)
+
+            Button {
+                controller?.mode = .freeEdit
+            } label: {
+                Label(L("view.freeMode", "Modo Libre"), systemImage: "doc.plaintext")
+            }
+            .keyboardShortcut("3", modifiers: .command)
+            .disabled(controller == nil)
+
+            Divider()
+
+            Button {
+                settings.increaseFontSize()
+            } label: {
+                Label(L("zoom.in", "Aumentar tamaño de fuente"), systemImage: "textformat.size.larger")
+            }
+            .keyboardShortcut("=", modifiers: .command)
+
+            Button {
+                settings.decreaseFontSize()
+            } label: {
+                Label(L("zoom.out", "Reducir tamaño de fuente"), systemImage: "textformat.size.smaller")
+            }
+            .keyboardShortcut("-", modifiers: .command)
+
+            Button {
+                settings.resetFontSize()
+            } label: {
+                Label(L("zoom.reset", "Restablecer tamaño de fuente"), systemImage: "textformat.size")
+            }
+            .keyboardShortcut("0", modifiers: .command)
         }
     }
 }
@@ -525,28 +597,7 @@ struct ListoApp: App {
                     Label(L("menu.recent", "Abrir reciente"), systemImage: "clock")
                 }
             }
-            CommandMenu(L("menu.view", "Ver")) {
-                Button {
-                    settings.increaseFontSize()
-                } label: {
-                    Label(L("zoom.in", "Aumentar tamaño de fuente"), systemImage: "textformat.size.larger")
-                }
-                .keyboardShortcut("=", modifiers: .command)
-
-                Button {
-                    settings.decreaseFontSize()
-                } label: {
-                    Label(L("zoom.out", "Reducir tamaño de fuente"), systemImage: "textformat.size.smaller")
-                }
-                .keyboardShortcut("-", modifiers: .command)
-
-                Button {
-                    settings.resetFontSize()
-                } label: {
-                    Label(L("zoom.reset", "Restablecer tamaño de fuente"), systemImage: "textformat.size")
-                }
-                .keyboardShortcut("0", modifiers: .command)
-            }
+            ViewCommands()
             UndoRedoCommands()
             TaskCommands()
             // There's no Help Book, so the stock "Listo Help" item only said
@@ -562,6 +613,22 @@ struct ListoApp: App {
             SettingsView()
                 .environment(\.locale, settings.locale)
                 .preferredColorScheme(settings.theme.colorScheme)
+        }
+    }
+}
+
+/// Menu titles and keys for the ⌥⌘1/2/3/0 priority commands.
+private enum PriorityShortcut {
+    static func key(for priority: TaskPriority) -> KeyEquivalent {
+        KeyEquivalent(Character(String(priority.rawValue)))
+    }
+
+    static func label(for priority: TaskPriority) -> String {
+        switch priority {
+        case .none: return L("priority.none", "Sin prioridad")
+        case .low: return L("priority.low", "Baja") + " (!)"
+        case .medium: return L("priority.medium", "Media") + " (!!)"
+        case .high: return L("priority.high", "Alta") + " (!!!)"
         }
     }
 }

@@ -141,6 +141,45 @@ one — subtasks have no notes, and the sort is over tasks.
   own text can never end with). Free Mode changes are detected by the
   differ; the LLM prompt knows the kind too.
 
+## Undo banner
+
+After a delete (non-blank), batch delete, split, group, section delete or
+batch move, a capsule at the bottom of the window says what happened with an
+Undo button (`DocumentController.undoToast`, `UndoToastView` in
+`ContentView`). Its Undo is one ⌘Z; any ⌘Z/⇧⌘Z hides it; it disappears after
+5s, and a newer one replaces it (generation counter, like `flash`). Not for
+moves, reorders or priority changes — too frequent to deserve a banner, and
+the flash already marks where the row went. Not run in the live GUI.
+
+## Shortcuts for priority and views
+
+⌥⌘1/⌥⌘2/⌥⌘3 set low/medium/high priority and ⌥⌘0 clears it (Task ▸
+Priority; multi-selection aware via `setPriority`). Not ⌘0, which is the
+font size reset, and not bare ⌘1–3, which went to the views: ⌘1 Kanban, ⌘2
+Outline (both switch back to App Mode), ⌘3 Free Mode — the toolbar pickers
+had no key equivalents. The View menu moved into `ViewCommands` so it can
+see the focused controller. Due-date shortcuts were not added; the context
+menu's Due date submenu stays the way to set one.
+
+## Settings in tabs
+
+Settings is a `TabView` (General / Appearance / Shortcuts / Assistant)
+instead of one long form. Reset buttons sit next to the control they reset
+(kept in layout at opacity 0 when there's nothing to reset, so rows don't
+jump). Shortcuts also shows a read-only reference of the board's keys.
+
+- **Done section names are a setting** (`AppSettings.doneSectionNames`,
+  comma-separated, case- and accent-insensitive substring match). The
+  keywords used to be hardcoded English (`done`/`completed`/`finished`), so
+  in a Spanish list a "Hecho" column never got the Done move; the default
+  now includes Hecho/Terminado/Completado/Finalizado. A per-document
+  "pick the target column" was rejected: it would need storing a column
+  choice per file outside the file, and names already cover it.
+- **Test connection** sends one tiny prompt (`LLMClient.testConnection`,
+  8 max tokens for Anthropic; OpenRouter tries its free models in order)
+  with the key *in the field*, saved or not, and shows Works or the error
+  body. Before, a bad key only surfaced later as an `unresolved` log entry.
+
 ## Free Mode without a watcher
 
 The FSEvents watcher (active while editing in Free Mode, comparing the file
@@ -462,16 +501,31 @@ SwiftUI reads as "no animation" — so there is no separate Settings toggle.
   committed rename. `DocumentController.perform(animation:)` wraps the
   tree/selection update in `withAnimation` only for the actions that
   should animate (add, delete, toggle, note, priority, reorder, indent,
-  outdent, move, delete section). Rename, section rename, and everything
-  Free Mode triggers (`handleSave`, mode switch) stay instant — a Free Mode
-  save reloads the whole tree from text, and animating that would replay a
-  mass shuffle.
+  outdent, move, delete section). Rename, section rename and a Free Mode
+  save (`handleSave`) stay instant — a save reloads the whole tree from
+  text, and animating that would replay a mass shuffle. The App ⇄ Free
+  Mode switch fades the whole view (`.animation(Motion.fade, value: mode)`):
+  the board being shown is inserted fresh, so there are no old rows for the
+  reloaded tree to shuffle against.
 - **Rows use `Motion.rowTransition`** (fade + slight scale from the top),
-  columns/sections `Motion.sectionTransition`. Move-to-section is therefore
-  a fade-out in the source and fade-in at the destination, not a flight
-  across; a `matchedGeometryEffect` fly-across would need the controller to
-  hand the views an old-id → new-id mapping. Not built — the simple version
-  reads fine, and that mapping is the fragile part.
+  columns/sections `Motion.sectionTransition`.
+- **Moves fly** (`TaskFlight`): ⌘←/⌘→, Move to… and drop-onto-task give
+  the task a new id, so on its own that was a fade-out/fade-in. For the
+  move's transaction `DocumentController.flightIDs` maps new id → old id,
+  and each top-level card keys a `matchedGeometryEffect` on
+  `flightKey(for:)`, so the leaving and arriving cards share a geometry;
+  the map clears after 0.6s. Single-task moves only (a batch has no one
+  mapping), top-level cards only. Kanban columns are separate clipping
+  scroll views, so across columns the card is seen sliding in from its new
+  column's edge rather than crossing the gap (`.scrollClipDisabled` was
+  rejected: a long column would spill over the header mid-flight). Not run
+  in the live GUI.
+- **`Motion.fade` stays on under Reduce Motion** — an opacity-only
+  crossfade, Apple's suggested replacement for motion. Used for the
+  checkbox (which under Reduce Motion now crossfades instead of swapping
+  with no feedback; a local animation on the glyph only), the App ⇄ Free
+  Mode switch, the undo banner and Settings' test result. Never wrap a
+  tree update in it — that would glide rows.
 - **`flashTaskID`**: after priority change, move and indent/outdent the row
   gets a brief accent flash (`RowHighlight`), because those can move a row
   far. Reorder (⌘↑/⌘↓) doesn't flash — it's a one-slot glide.

@@ -5,8 +5,8 @@ import ListoEngine
 
 extension DocumentController {
     /// User-requested addition: checking off a top-level task, when the
-    /// document has a section whose title contains "Done"/"Completed"/
-    /// "Finished" (case-insensitive, any depth), bumps it to the end of
+    /// document has a section whose title contains one of the Done
+    /// names from Settings (case- and accent-insensitive, any depth), bumps it to the end of
     /// that section after `AppSettings.doneMoveDelaySeconds` — a beat to
     /// see the checkmark land before the row jumps away, rather than an
     /// instant relocate. `0` disables the feature entirely.
@@ -54,13 +54,13 @@ extension DocumentController {
     }
 
     /// First section (any nesting depth, document order) whose title
-    /// contains one of the "done" keywords — a loose match, not an exact
-    /// name, so "Done ✅" or "Completed tasks" both qualify.
-    private static func doneSection(in document: ListoDocument) -> ListoSection? {
-        let keywords = ["done", "completed", "finished"]
+    /// contains one of the "done" keywords (Settings ▸ Behavior) — a loose,
+    /// case- and accent-insensitive match, not an exact name, so "Done ✅",
+    /// "Completed tasks" or "Hecho" all qualify.
+    static func doneSection(in document: ListoDocument, keywords: [String] = AppSettings.shared.doneSectionKeywords) -> ListoSection? {
+        guard !keywords.isEmpty else { return nil }
         return document.allSectionsRecursive.first { section in
-            let title = section.title.lowercased()
-            return keywords.contains { title.contains($0) }
+            keywords.contains { section.title.range(of: $0, options: [.caseInsensitive, .diacriticInsensitive]) != nil }
         }
     }
 }

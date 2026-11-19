@@ -211,8 +211,8 @@ enum LocalizationTable {
         ],
         "settings.doneMoveDelay.disabled": ["es": "Desactivado", "en": "Disabled"],
         "settings.doneMoveDelay.hint": [
-            "es": "Al marcar una tarea, si existe una sección cuyo nombre contenga \"Done\", \"Completed\" o \"Finished\", se la mueve al final de esa sección después de esta espera. En 0 la función queda desactivada.",
-            "en": "When you check off a task, if a section's name contains \"Done\", \"Completed\", or \"Finished\", it's moved to the end of that section after this delay. At 0 the feature is disabled.",
+            "es": "Al marcar una tarea, se la mueve al final de la primera sección cuyo nombre contenga alguno de estos nombres (separados por comas, sin distinguir mayúsculas ni acentos), después de esta espera. En 0 la función queda desactivada.",
+            "en": "When you check off a task, it's moved to the end of the first section whose name contains one of these names (comma-separated, ignoring case and accents) after this delay. At 0 the feature is disabled.",
         ],
 
         "menu.newList": ["es": "Nueva lista", "en": "New list"],
@@ -299,5 +299,31 @@ enum LocalizationTable {
             "en": "You can change it in Settings ▸ Menu bar.",
         ],
         "zoom.reset": ["es": "Restablecer tamaño de fuente", "en": "Reset Font Size"],
+
+        "view.freeMode": ["es": "Modo Libre", "en": "Free Mode"],
+
+        "toast.undo": ["es": "Deshacer", "en": "Undo"],
+        "toast.undo.help": ["es": "Deshacer (⌘Z)", "en": "Undo (⌘Z)"],
+        "toast.deleted": ["es": "Se eliminó “%@”", "en": "Deleted “%@”"],
+        "toast.deletedMany": ["es": "%d tareas eliminadas", "en": "Deleted %d tasks"],
+        "toast.deletedSection": ["es": "Se eliminó la sección “%@”", "en": "Deleted section “%@”"],
+        "toast.split": ["es": "Dividida en %d tareas", "en": "Split into %d tasks"],
+        "toast.splitMany": ["es": "%d tareas divididas", "en": "Split %d tasks"],
+        "toast.grouped": ["es": "%d tareas agrupadas", "en": "Grouped %d tasks"],
+        "toast.moved": ["es": "%d tareas movidas", "en": "Moved %d tasks"],
+
+        "settings.tab.general": ["es": "General", "en": "General"],
+        "settings.tab.shortcuts": ["es": "Atajos", "en": "Shortcuts"],
+        "settings.tab.assistant": ["es": "Asistente", "en": "Assistant"],
+        "settings.section.doneMove": ["es": "Tareas completadas", "en": "Completed tasks"],
+        "settings.doneSectionNames": ["es": "Nombres de la sección Hecho", "en": "Done section names"],
+        "settings.section.keyReference": ["es": "Atajos del tablero", "en": "Board shortcuts"],
+        "settings.ref.views": ["es": "Kanban / Outline / Modo Libre", "en": "Kanban / Outline / Free Mode"],
+        "settings.ref.reorder": ["es": "Reordenar", "en": "Reorder"],
+        "settings.ref.moveColumn": ["es": "Mover a la columna vecina", "en": "Move to adjacent column"],
+        "settings.ref.extend": ["es": "Ampliar selección", "en": "Extend selection"],
+        "settings.test": ["es": "Probar conexión", "en": "Test connection"],
+        "settings.test.ok": ["es": "Funciona", "en": "Works"],
+        "settings.test.failed": ["es": "La conexión falló.", "en": "Connection failed."],
     ]
 }

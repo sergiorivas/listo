@@ -177,9 +177,8 @@ final class AppSettings: ObservableObject {
             reloadToken &+= 1
         }
     }
-    /// Delay before a task checked off into a "Done"/"Completed"/"Finished"
-    /// section (title match, case-insensitive) is bumped to the end of that
-    /// section — see `DocumentController.toggle`. `0` disables the feature
+    /// Delay before a task checked off is bumped to the end of the Done
+    /// section (`doneSectionNames`) — see `DocumentController.toggle`. `0` disables the feature
     /// entirely: the task is left wherever it was checked.
     @Published var doneMoveDelaySeconds: Double {
         didSet {
@@ -187,6 +186,29 @@ final class AppSettings: ObservableObject {
             reloadToken &+= 1
         }
     }
+    /// Which section the delayed Done move targets: a comma-separated list
+    /// of names, matched as case- and accent-insensitive substrings of a
+    /// section title. English and Spanish by default, since the app ships in
+    /// both and a column called "Hecho" used to be ignored.
+    @Published var doneSectionNames: String {
+        didSet {
+            UserDefaults.standard.set(doneSectionNames, forKey: Keys.doneSectionNames)
+            reloadToken &+= 1
+        }
+    }
+    static let defaultDoneSectionNames = "Done, Completed, Finished, Hecho, Terminado, Completado, Finalizado"
+
+    /// `doneSectionNames` split into its non-empty, trimmed entries.
+    var doneSectionKeywords: [String] {
+        Self.keywords(from: doneSectionNames)
+    }
+
+    static func keywords(from list: String) -> [String] {
+        list.split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
     /// Plays a short system sound when checking a task off — see
     /// `DocumentController.toggle`. Off by default: a new sound shouldn't
     /// start playing unasked.
@@ -266,6 +288,7 @@ final class AppSettings: ObservableObject {
         static let kanbanTitleOverflow = "listo.settings.kanbanTitleOverflow"
         static let llmProvider = "listo.settings.llmProvider"
         static let doneMoveDelaySeconds = "listo.settings.doneMoveDelaySeconds"
+        static let doneSectionNames = "listo.settings.doneSectionNames"
         static let completionSoundEnabled = "listo.settings.completionSoundEnabled"
         static let deleteSoundEnabled = "listo.settings.deleteSoundEnabled"
         static let outdentAbsorbsSiblings = "listo.settings.outdentAbsorbsSiblings"
@@ -289,6 +312,7 @@ final class AppSettings: ObservableObject {
             .flatMap(LLMProvider.init(rawValue:)) ?? .anthropic
         let storedDelay = defaults.object(forKey: Keys.doneMoveDelaySeconds) as? Double
         doneMoveDelaySeconds = storedDelay ?? Self.defaultDoneMoveDelaySeconds
+        doneSectionNames = defaults.string(forKey: Keys.doneSectionNames) ?? Self.defaultDoneSectionNames
         completionSoundEnabled = defaults.object(forKey: Keys.completionSoundEnabled) as? Bool ?? false
         deleteSoundEnabled = defaults.object(forKey: Keys.deleteSoundEnabled) as? Bool ?? true
         outdentAbsorbsSiblings = defaults.object(forKey: Keys.outdentAbsorbsSiblings) as? Bool ?? false

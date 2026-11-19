@@ -29,11 +29,15 @@ struct ContentView: View {
                 }
             case .freeEdit:
                 FreeEditView(text: $fileDocument.text)
+                    .transition(.opacity)
             }
         }
-        // Kanban ⇄ Outline crossfades. Only the view style: switching to or
-        // from Free Mode reloads the tree and stays instant (see Motion).
+        // Kanban ⇄ Outline crossfades. Switching to or from Free Mode is a
+        // plain fade of the whole view: the board being shown is inserted
+        // fresh, so the reloaded tree has no old rows to shuffle against.
+        // Opacity only, so it stays on under Reduce Motion (`Motion.fade`).
         .animation(Motion.snappy, value: controller.viewStyle)
+        .animation(Motion.fade, value: controller.mode)
         .frame(minWidth: 480, idealWidth: idealWindowWidth, minHeight: 360, idealHeight: 640)
         // Exposes this window's controller to the app-level Task menu
         // (ListoApp.swift's `TaskCommands`), which is what actually owns
@@ -105,6 +109,14 @@ struct ContentView: View {
                 NoMatchesView(controller: controller)
             }
         }
+        .overlay(alignment: .bottom) {
+            if let toast = controller.undoToast {
+                UndoToastView(toast: toast, controller: controller)
+                    .padding(.bottom, 18)
+                    .transition(Motion.reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                    .id(toast.id)
+            }
+        }
         .sheet(isPresented: $showLog) {
             LogPanelView(controller: controller)
         }
@@ -158,6 +170,42 @@ struct ContentView: View {
         guard controller.mode == .app, controller.viewStyle == .kanban else { return 760 }
         let width = KanbanView.idealContentWidth(controller: controller)
         return min(width, 1400)
+    }
+}
+
+/// "Deleted “Buy milk” — Undo": shown for a few seconds after a delete,
+/// split, group, section delete or batch move, so ⌘Z is discoverable. The
+/// Undo button runs the same history step as ⌘Z.
+private struct UndoToastView: View {
+    let toast: UndoToast
+    @ObservedObject var controller: DocumentController
+    @ObservedObject private var settings = AppSettings.shared
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(toast.message)
+                .font(settings.font(.body))
+                .lineLimit(1)
+            Button(L("toast.undo", "Deshacer")) { controller.undoFromToast() }
+                .buttonStyle(.borderless)
+                .font(settings.font(.body, weight: .semibold))
+                .help(L("toast.undo.help", "Deshacer (⌘Z)"))
+            Button {
+                controller.dismissUndoToast()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.pressable)
+            .accessibilityLabel(L("common.close", "Cerrar"))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.regularMaterial, in: Capsule())
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.08)))
+        .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
+        .accessibilityElement(children: .contain)
     }
 }
 

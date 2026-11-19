@@ -16,6 +16,9 @@ public protocol LLMClient {
     /// Reconciles a conflict where the file changed on disk while the user
     /// was mid-edit in Modo Libre. Returns the merged full document text.
     func mergeConflict(base: String, local: String, external: String) async throws -> String
+    /// One tiny request to confirm the key works (Settings ▸ Test
+    /// connection); throws whatever a real call would.
+    func testConnection() async throws
 }
 
 /// Used when no API key is configured or the network is unreachable —
@@ -29,7 +32,14 @@ public struct UnavailableLLMClient: LLMClient {
     public func mergeConflict(base: String, local: String, external: String) async throws -> String {
         throw LLMError.unavailable
     }
+    public func testConnection() async throws {
+        throw LLMError.unavailable
+    }
 }
+
+/// What `testConnection` sends: short, so the check costs next to nothing.
+private let connectionTestPrompt = "Reply with the single word OK."
+
 
 /// The two prompts both `LLMClient` implementations send — the task is
 /// provider-agnostic, only how the response gets there (and back) differs.
@@ -133,7 +143,11 @@ public final class AnthropicLLMClient: LLMClient {
         return try await sendMessage(prompt: prompt)
     }
 
-    private func sendMessage(prompt: String) async throws -> String {
+    public func testConnection() async throws {
+        _ = try await sendMessage(prompt: connectionTestPrompt, maxTokens: 8)
+    }
+
+    private func sendMessage(prompt: String, maxTokens: Int = 4096) async throws -> String {
         var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
         request.httpMethod = "POST"
         request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
@@ -141,7 +155,7 @@ public final class AnthropicLLMClient: LLMClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body: [String: Any] = [
             "model": model,
-            "max_tokens": 4096,
+            "max_tokens": maxTokens,
             "messages": [["role": "user", "content": prompt]],
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -209,6 +223,10 @@ public final class OpenRouterLLMClient: LLMClient {
     public func mergeConflict(base: String, local: String, external: String) async throws -> String {
         let prompt = LLMPrompts.mergeConflict(base: base, local: local, external: external)
         return try await sendMessageWithFallback(prompt: prompt)
+    }
+
+    public func testConnection() async throws {
+        _ = try await sendMessageWithFallback(prompt: connectionTestPrompt)
     }
 
     /// Tries each model in `models` in order, returning the first success;

@@ -263,6 +263,7 @@ private struct KanbanColumn: View {
                 }
                 ForEach(controller.filter.visible(section.displayTasks), id: \.id) { task in
                     TaskChip(controller: controller, task: task)
+                        .taskFlight(controller, taskID: task.id)
                         .id(task.id)
                         .transition(Motion.rowTransition)
                 }
@@ -340,6 +341,7 @@ private struct KanbanSubgroup: View {
             .onHover { isHeaderHovering = $0 }
             ForEach(controller.filter.visible(section.displayTasks), id: \.id) { task in
                 TaskChip(controller: controller, task: task)
+                    .taskFlight(controller, taskID: task.id)
                     .id(task.id)
                     .transition(Motion.rowTransition)
             }

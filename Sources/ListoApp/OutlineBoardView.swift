@@ -72,6 +72,7 @@ private struct OutlineSection: View {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(controller.filter.visible(section.displayTasks), id: \.id) { task in
                         OutlineTaskRow(controller: controller, task: task, sectionDepth: depth + 1)
+                            .taskFlight(controller, taskID: task.id)
                             .id(task.id)
                             .transition(Motion.rowTransition)
                     }

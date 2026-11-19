@@ -27,6 +27,12 @@ enum Motion {
     static var panelSpring: Animation? { reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.8) }
     /// The fade-out at the end of a `RowHighlight` flash.
     static var flashFade: Animation? { reduceMotion ? nil : .easeOut(duration: 0.5) }
+    /// A plain opacity crossfade — the one animation that stays on under
+    /// Reduce Motion, since nothing moves (Apple's guidance is to replace
+    /// motion with a fade, not to drop feedback). Only ever paired with
+    /// opacity-only changes: wrapping a tree update in it would also glide
+    /// rows into their new places.
+    static var fade: Animation { .easeInOut(duration: reduceMotion ? 0.15 : 0.2) }
 
     /// A task card/row, subtask row or note appearing or disappearing.
     static var rowTransition: AnyTransition {
@@ -43,18 +49,53 @@ enum Motion {
 /// square/checkmark swap cross-fades, and checking a task off gives the
 /// glyph a little bounce. Un-checking doesn't bounce — completing is the
 /// moment worth marking.
+///
+/// Under Reduce Motion the toggle itself isn't animated (`Motion.quick` is
+/// `nil`), which used to leave checking a box with no feedback but the
+/// instant swap. The glyph now crossfades there instead — a local
+/// `Motion.fade` on just this view, so nothing else on the board moves.
 struct TaskCheckboxIcon: View {
     let isDone: Bool
     @State private var bounce = 0
 
     var body: some View {
-        Image(systemName: isDone ? "checkmark.square.fill" : "square")
-            .foregroundStyle(isDone ? Color.accentColor : .secondary)
-            .contentTransition(.symbolEffect(.replace))
-            .symbolEffect(.bounce, value: bounce)
-            .onChange(of: isDone) { _, done in
-                if done, !Motion.reduceMotion { bounce += 1 }
-            }
+        if Motion.reduceMotion {
+            Image(systemName: isDone ? "checkmark.square.fill" : "square")
+                .foregroundStyle(isDone ? Color.accentColor : .secondary)
+                .contentTransition(.opacity)
+                .animation(Motion.fade, value: isDone)
+        } else {
+            Image(systemName: isDone ? "checkmark.square.fill" : "square")
+                .foregroundStyle(isDone ? Color.accentColor : .secondary)
+                .contentTransition(.symbolEffect(.replace))
+                .symbolEffect(.bounce, value: bounce)
+                .onChange(of: isDone) { _, done in
+                    if done { bounce += 1 }
+                }
+        }
+    }
+}
+
+/// Lets a top-level card/row fly from its old place to its new one when it
+/// is moved to another section (⌘←/⌘→, Move to…, drag & drop): the card
+/// keys a `matchedGeometryEffect` on `DocumentController.flightKey(for:)`,
+/// which for the move's transaction is the id the task had *before* the
+/// move, so the leaving card and the arriving card are one geometry. Shares
+/// the board's selection namespace (the selection glide uses a `String` id,
+/// these are `UUID`s, so they never collide). Kanban columns are separate
+/// scroll views that clip, so across columns the card is seen sliding in
+/// from the edge of its new column rather than over the gap.
+struct TaskFlight: ViewModifier {
+    @ObservedObject var controller: DocumentController
+    let taskID: UUID
+    @Environment(\.selectionNamespace) private var namespace
+
+    func body(content: Content) -> some View {
+        if let namespace {
+            content.matchedGeometryEffect(id: controller.flightKey(for: taskID), in: namespace)
+        } else {
+            content
+        }
     }
 }
 
@@ -216,6 +257,10 @@ extension ButtonStyle where Self == PressableButtonStyle {
 extension View {
     func pulse<Value: Equatable>(on value: Value, scale: CGFloat = 1.2) -> some View {
         modifier(PulseOnChange(value: value, scale: scale))
+    }
+
+    func taskFlight(_ controller: DocumentController, taskID: UUID) -> some View {
+        modifier(TaskFlight(controller: controller, taskID: taskID))
     }
 
     func rowHighlight(isSelected: Bool, isCursor: Bool, isFlashing: Bool) -> some View {
