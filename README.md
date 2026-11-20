@@ -233,6 +233,7 @@ Sources/ListoApp/         SwiftUI macOS app
   Localization.swift      AppSettings + L(key, value)
   LocalizationTable.swift es/en strings in code (no String Catalog under SwiftPM)
   KanbanLayoutStore.swift / OutlineLayoutStore.swift  Column widths, folded sections
+  WindowFrameKeeper.swift Remembers the window's size and position across launches
   RecentFilesStore.swift  Recent files; reopens the last one on launch
   WelcomeView.swift       First-launch welcome (also Help ▸ Welcome to Listo)
   SoundPlayer.swift, TaskLineContinuation.swift, ExternalChange.swift, …

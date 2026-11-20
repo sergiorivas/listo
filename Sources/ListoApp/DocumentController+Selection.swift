@@ -213,3 +213,24 @@ extension DocumentController {
         }
     }
 }
+
+// MARK: - Collapsed Kanban columns
+
+extension DocumentController {
+    /// After a move (⌘←/⌘→, Move to…, drag & drop, the delayed Done move):
+    /// if the selection followed the task into a collapsed Kanban column,
+    /// let go of it instead. `KanbanView` opens the column of whatever is
+    /// selected, so keeping the selection would undo the user's choice to
+    /// collapse it; and a selection on a row nobody can see would let the
+    /// Task menu act on it blind.
+    func deselectIfInCollapsedColumn() {
+        guard viewStyle == .kanban, let id = selectedTaskID,
+              let column = document.sections.first(where: { section in
+                  section.allTasksRecursive.contains { $0.id == id }
+              }),
+              KanbanLayoutStore.shared.isCollapsed(documentKey: documentKey, sectionTitle: column.title)
+        else { return }
+        if editingTaskID == id { editingTaskID = nil }
+        selectedTaskID = nil
+    }
+}

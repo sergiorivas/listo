@@ -424,11 +424,13 @@ final class DocumentController: ObservableObject {
             performBatch(ids, follow: true, silencing: { $0 == .noSectionInDirection }) {
                 try $0.moveTaskToAdjacentSection(taskID: $1, direction: direction)
             }
+            deselectIfInCollapsedColumn()
             return
         }
         perform(animation: Motion.snappy, fly: true, followSelectionFrom: taskID, silencing: { $0 == .noSectionInDirection }) {
             try $0.moveTaskToAdjacentSection(taskID: taskID, direction: direction)
         }
+        deselectIfInCollapsedColumn()
     }
 
     /// Drag-and-drop onto a task: next to it, or as its last subtask. A drop
@@ -438,6 +440,7 @@ final class DocumentController: ObservableObject {
         perform(animation: Motion.snappy, flash: true, fly: true, followSelectionFrom: taskID, silencing: { $0 == .invalidMove || $0 == .taskHasContent }) {
             try $0.moveTask(taskID: taskID, relativeTo: targetID, placement: placement)
         }
+        deselectIfInCollapsedColumn()
     }
 
     func move(taskID: UUID, toSectionID sectionID: UUID) {
@@ -446,9 +449,11 @@ final class DocumentController: ObservableObject {
             if performBatch(ids, follow: true, { try $0.moveTask(taskID: $1, toSectionID: sectionID) }) {
                 showUndoToast(String(format: L("toast.moved", "%d tareas movidas"), ids.count))
             }
+            deselectIfInCollapsedColumn()
             return
         }
         perform(animation: Motion.snappy, flash: true, fly: true, followSelectionFrom: taskID) { try $0.moveTask(taskID: taskID, toSectionID: sectionID) }
+        deselectIfInCollapsedColumn()
     }
 
     /// Inserts a new, empty sibling task right after `taskID` (same level —

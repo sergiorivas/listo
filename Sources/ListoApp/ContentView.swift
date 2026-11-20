@@ -103,6 +103,7 @@ struct ContentView: View {
         }
         .searchable(text: $controller.filter.query, placement: .toolbar, prompt: L("search.prompt", "Buscar tareas"))
         .background(InitialFocusGuard())
+        .background(WindowFrameKeeper())
         .overlay {
             if controller.mode == .app, controller.filter.isActive,
                controller.filter.displayOrder(in: controller.document).isEmpty {

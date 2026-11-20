@@ -88,9 +88,11 @@ struct KanbanView: View {
         }
     }
 
-    /// A selection that lands in a collapsed column (a move, an undo, ⌘N)
-    /// would be invisible, so that column opens. ↑/↓ already skip collapsed
-    /// columns, so this never fights navigation.
+    /// A selection that lands in a collapsed column (an undo, ⌘N) would be
+    /// invisible, so that column opens. ↑/↓ already skip collapsed columns,
+    /// so this never fights navigation. Moves are the exception: they drop
+    /// the selection instead (`deselectIfInCollapsedColumn`), so the column
+    /// the task was moved into stays collapsed.
     private func expandColumnIfCollapsed(containing taskID: UUID?) {
         guard let taskID, let section = column(containing: taskID),
               layout.isCollapsed(documentKey: controller.documentKey, sectionTitle: section.title) else { return }

@@ -478,6 +478,26 @@ the columns need, they center (`GeometryReader` +
 with all the free space on the right; once there are more columns than fit,
 it scrolls normally again with no centering effect.
 
+## Window frame across launches
+
+`WindowFrameKeeper` (on `ContentView`) stores the window's frame in
+UserDefaults (`listo.window.frame`) on every resize, move and close, and
+restores it when a window opens, so the app reopens at the size it was
+closed at. This overrides the column-fitted ideal width above whenever a
+frame is stored; that width is now only the first-ever size.
+
+- **One frame for the app, not per file**: a new list opens like the last
+  one did, and there is no file path yet for an untitled document. Two
+  windows opened together land on the same frame.
+- **Not `setFrameAutosaveName`**: an autosave name must be unique per
+  window, and `DocumentGroup` applies the SwiftUI ideal size after AppKit's
+  autosaved frame. The restore waits a runloop turn for the same reason, and
+  saving starts only after it, so the initial size can't overwrite the
+  stored one.
+- A frame no longer on any screen (monitor unplugged) keeps its size, shrunk
+  to fit, centred on the main screen (`WindowFrameStore.placement`). Full
+  screen isn't stored. Not run in the live GUI.
+
 ## Native focus ring on the title field
 
 Clicking a task's/section's title `TextField` showed macOS's native blue
@@ -864,8 +884,19 @@ selected task's column (columns carry `.id(section.id)`). The modifier also
 fires when the tree changes under an unchanged selection (Return-chained
 blanks reuse their id), and runs a second pass 0.4s later, once insert and
 flight transitions have settled and the row's frame is final. A selection
-landing in a collapsed column (a move, an undo) expands it; ↑/↓ already skip
+landing in a collapsed column (an undo, ⌘N) expands it; ↑/↓ already skip
 collapsed columns, so this never fights navigation. Not run in the live GUI.
+
+**Moves into a collapsed column leave it collapsed.** ⌘←/⌘→, Move to…, drag
+& drop (onto the column or a card in it) and the delayed Done move used to
+open it, because the selection followed the task and the column opens for
+whatever is selected. Collapsing is a deliberate choice (a Done column kept
+out of the way is the usual case), so now the move goes through and the
+selection is dropped instead (`DocumentController.deselectIfInCollapsedColumn`,
+Kanban only; multi-selection included). Expanding on select is kept for undo
+and ⌘N, where the user is about to look at or type into the row. Dropping
+rather than keeping an invisible selection also stops the Task menu acting on
+a row nobody can see.
 
 ## Menu bar quick-add (⌃⌥⌘T, configurable)
 
