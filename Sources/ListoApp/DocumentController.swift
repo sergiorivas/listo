@@ -421,39 +421,34 @@ final class DocumentController: ObservableObject {
     func moveToAdjacentSection(taskID: UUID, direction: Int) {
         let ids = targets(for: taskID)
         if ids.count > 1 {
-            performBatch(ids, follow: true, silencing: { $0 == .noSectionInDirection }) {
+            performBatch(ids, follow: true, keepsColumnsCollapsed: true, silencing: { $0 == .noSectionInDirection }) {
                 try $0.moveTaskToAdjacentSection(taskID: $1, direction: direction)
             }
-            deselectIfInCollapsedColumn()
             return
         }
-        perform(animation: Motion.snappy, fly: true, followSelectionFrom: taskID, silencing: { $0 == .noSectionInDirection }) {
+        perform(animation: Motion.snappy, fly: true, followSelectionFrom: taskID, keepsColumnsCollapsed: true, silencing: { $0 == .noSectionInDirection }) {
             try $0.moveTaskToAdjacentSection(taskID: taskID, direction: direction)
         }
-        deselectIfInCollapsedColumn()
     }
 
     /// Drag-and-drop onto a task: next to it, or as its last subtask. A drop
     /// the engine refuses (`DropRule` already filters these) is a silent
     /// no-op.
     func drop(taskID: UUID, onto targetID: UUID, placement: DropPlacement) {
-        perform(animation: Motion.snappy, flash: true, fly: true, followSelectionFrom: taskID, silencing: { $0 == .invalidMove || $0 == .taskHasContent }) {
+        perform(animation: Motion.snappy, flash: true, fly: true, followSelectionFrom: taskID, keepsColumnsCollapsed: true, silencing: { $0 == .invalidMove || $0 == .taskHasContent }) {
             try $0.moveTask(taskID: taskID, relativeTo: targetID, placement: placement)
         }
-        deselectIfInCollapsedColumn()
     }
 
     func move(taskID: UUID, toSectionID sectionID: UUID) {
         let ids = targets(for: taskID)
         if ids.count > 1 {
-            if performBatch(ids, follow: true, { try $0.moveTask(taskID: $1, toSectionID: sectionID) }) {
+            if performBatch(ids, follow: true, keepsColumnsCollapsed: true, { try $0.moveTask(taskID: $1, toSectionID: sectionID) }) {
                 showUndoToast(String(format: L("toast.moved", "%d tareas movidas"), ids.count))
             }
-            deselectIfInCollapsedColumn()
             return
         }
-        perform(animation: Motion.snappy, flash: true, fly: true, followSelectionFrom: taskID) { try $0.moveTask(taskID: taskID, toSectionID: sectionID) }
-        deselectIfInCollapsedColumn()
+        perform(animation: Motion.snappy, flash: true, fly: true, followSelectionFrom: taskID, keepsColumnsCollapsed: true) { try $0.moveTask(taskID: taskID, toSectionID: sectionID) }
     }
 
     /// Inserts a new, empty sibling task right after `taskID` (same level —
@@ -651,6 +646,7 @@ final class DocumentController: ObservableObject {
         flash: Bool = false,
         fly: Bool = false,
         followSelectionFrom taskID: UUID? = nil,
+        keepsColumnsCollapsed: Bool = false,
         silencing: (ListoEditorError) -> Bool = { _ in false },
         _ action: (ListoEditor) throws -> LogEvent
     ) -> Bool {
@@ -665,8 +661,11 @@ final class DocumentController: ObservableObject {
                 if !flight.isEmpty { self.startFlight(flight) }
                 self.document = self.editor.document
                 if let taskID, let newID = self.editor.lastActionTaskID {
-                    if self.selectedTaskID == taskID { self.selectedTaskID = newID }
-                    if self.editingTaskID == taskID { self.editingTaskID = newID }
+                    // A move into a collapsed column lets go of the task
+                    // rather than following it (`isInCollapsedColumn`).
+                    let follows = !(keepsColumnsCollapsed && self.isInCollapsedColumn(newID))
+                    if self.selectedTaskID == taskID { self.selectedTaskID = follows ? newID : nil }
+                    if self.editingTaskID == taskID { self.editingTaskID = follows ? newID : nil }
                 }
             }
             if let animation {

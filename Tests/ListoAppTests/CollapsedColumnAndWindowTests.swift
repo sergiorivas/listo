@@ -1,4 +1,5 @@
 import XCTest
+import Combine
 import AppKit
 import ListoEngine
 @testable import ListoApp
@@ -77,6 +78,30 @@ final class CollapsedColumnAndWindowTests: XCTestCase {
         XCTAssertEqual(c.document.sections[1].tasks.count, 3)
         XCTAssertNil(c.selectedTaskID)
         XCTAssertTrue(c.multiSelectedIDs.isEmpty)
+    }
+
+    /// The column opens on *any* published selection inside it, even one
+    /// replaced a moment later: the move's flash and undo banner run their
+    /// own `withAnimation`, which flushes pending state into a render. So
+    /// the selection must never pass through the moved task at all.
+    func testMoveIntoCollapsedColumnNeverPublishesSelectionThere() {
+        for run in ["move", "drop", "batch"] {
+            let c = makeController(board)
+            collapse("Done", in: c)
+            c.selectedTaskID = task(c, "A").id
+            if run == "batch" { c.extendSelection(direction: 1) }
+            var seen: [UUID?] = []
+            let sub = c.$selectedTaskID.dropFirst().sink { seen.append($0) }
+            switch run {
+            case "move": c.move(taskID: task(c, "A").id, toSectionID: c.document.sections[1].id)
+            case "drop": c.drop(taskID: task(c, "A").id, onto: task(c, "Z").id, placement: .after)
+            default: c.move(taskID: c.selectedTaskID!, toSectionID: c.document.sections[1].id)
+            }
+            sub.cancel()
+            let doneIDs = Set(c.document.sections[1].allTasksRecursive.map(\.id))
+            XCTAssertFalse(seen.contains { $0.map(doneIDs.contains) ?? false }, "\(run): selection passed through the collapsed column")
+            XCTAssertNil(c.selectedTaskID, run)
+        }
     }
 
     func testMoveIntoExpandedColumnKeepsSelection() {

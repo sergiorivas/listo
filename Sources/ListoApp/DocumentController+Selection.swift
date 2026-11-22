@@ -103,6 +103,7 @@ extension DocumentController {
     func performBatch(
         _ ids: [UUID],
         follow: Bool = false,
+        keepsColumnsCollapsed: Bool = false,
         silencing: (ListoEditorError) -> Bool = { _ in false },
         _ action: (ListoEditor, UUID) throws -> Void
     ) -> Bool {
@@ -127,16 +128,20 @@ extension DocumentController {
         syncDocumentText()
         withAnimation(Motion.snappy) {
             document = editor.document
-            reselect(afterBatch: ids, newIDs: newIDs)
+            reselect(afterBatch: ids, newIDs: newIDs, keepsColumnsCollapsed: keepsColumnsCollapsed)
         }
         refreshLog()
         saveIfPossible()
         return ran
     }
 
-    func reselect(afterBatch ids: [UUID], newIDs: [UUID: UUID]) {
+    func reselect(afterBatch ids: [UUID], newIDs: [UUID: UUID], keepsColumnsCollapsed: Bool = false) {
         let live = Set(document.allTasksRecursive.map(\.id))
-        func follow(_ id: UUID?) -> UUID? { id.flatMap { newIDs[$0] ?? $0 }.flatMap { live.contains($0) ? $0 : nil } }
+        func follow(_ id: UUID?) -> UUID? {
+            id.flatMap { newIDs[$0] ?? $0 }
+                .flatMap { live.contains($0) ? $0 : nil }
+                .flatMap { keepsColumnsCollapsed && isInCollapsedColumn($0) ? nil : $0 }
+        }
         let remaining = ids.compactMap { follow($0) }
         let cursor = follow(selectedTaskID) ?? remaining.last
         let anchor = follow(selectionAnchorID) ?? remaining.first
@@ -218,19 +223,21 @@ extension DocumentController {
 
 extension DocumentController {
     /// After a move (⌘←/⌘→, Move to…, drag & drop, the delayed Done move):
-    /// if the selection followed the task into a collapsed Kanban column,
-    /// let go of it instead. `KanbanView` opens the column of whatever is
-    /// selected, so keeping the selection would undo the user's choice to
-    /// collapse it; and a selection on a row nobody can see would let the
-    /// Task menu act on it blind.
-    func deselectIfInCollapsedColumn() {
-        guard viewStyle == .kanban, let id = selectedTaskID,
+    /// whether the selection following the task would land in a collapsed
+    /// Kanban column. Moves then drop the selection instead of following.
+    /// `KanbanView` opens the column of whatever is selected, so keeping the
+    /// selection would undo the user's choice to collapse it; and a
+    /// selection on a row nobody can see would let the Task menu act on it
+    /// blind. Checked *before* assigning: the column opens on any published
+    /// selection inside it, even one replaced in the same update, because
+    /// the move's flash / undo banner run their own `withAnimation`, which
+    /// flushes pending state into a render first.
+    func isInCollapsedColumn(_ id: UUID?) -> Bool {
+        guard viewStyle == .kanban, let id,
               let column = document.sections.first(where: { section in
                   section.allTasksRecursive.contains { $0.id == id }
-              }),
-              KanbanLayoutStore.shared.isCollapsed(documentKey: documentKey, sectionTitle: column.title)
-        else { return }
-        if editingTaskID == id { editingTaskID = nil }
-        selectedTaskID = nil
+              })
+        else { return false }
+        return KanbanLayoutStore.shared.isCollapsed(documentKey: documentKey, sectionTitle: column.title)
     }
 }

@@ -892,11 +892,20 @@ collapsed columns, so this never fights navigation. Not run in the live GUI.
 open it, because the selection followed the task and the column opens for
 whatever is selected. Collapsing is a deliberate choice (a Done column kept
 out of the way is the usual case), so now the move goes through and the
-selection is dropped instead (`DocumentController.deselectIfInCollapsedColumn`,
+selection is dropped instead (`keepsColumnsCollapsed` on `perform`/
+`performBatch`, checked with `DocumentController.isInCollapsedColumn`;
 Kanban only; multi-selection included). Expanding on select is kept for undo
 and ⌘N, where the user is about to look at or type into the row. Dropping
 rather than keeping an invisible selection also stops the Task menu acting on
 a row nobody can see.
+
+The first version deselected *after* the move, which still opened the column
+for the Done move, Move to… and drops (⌘←/⌘→ happened to work): those
+flash the row, and `flash`'s own `withAnimation` flushes pending state into a
+render first, so one frame saw the task selected in the collapsed column.
+Now the selection never points there at all — the decision is made before
+assigning it. The test records every published `selectedTaskID`, not just
+the final one.
 
 ## Menu bar quick-add (⌃⌥⌘T, configurable)
 
